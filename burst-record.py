@@ -20,7 +20,7 @@ def TimeStamp():
     ts = time.time()
     return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M-%S.') + str(ts)
 
-def burstRecord(pathToDir, captureDevice, burstLength=.3):
+def burstRecord(pathToDir, captureDevice, burstLength=.5):
     start = time.time()
     if not os.path.exists(pathToDir):
         os.makedirs(pathToDir)
