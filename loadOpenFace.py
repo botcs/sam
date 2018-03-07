@@ -17,12 +17,11 @@ containing_dir = str(pathlib.Path(__file__).resolve().parent)
 
 fileDir = os.path.dirname(os.path.realpath(__file__))
 modelDir = os.path.join(fileDir, 'weights')
-dlibModelDir = os.path.join(modelDir, 'dlib')
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--dlibFacePredictor', type=str, help="Path to dlib's face predictor.",
-                    default=os.path.join(dlibModelDir, "shape_predictor_68_face_landmarks.dat"))
+                    default=os.path.join(modelDir, "shape_predictor_68_face_landmarks.dat"))
 parser.add_argument('--database', type=str, help='Compare query image to pictures found in [database]',
                     default='~/Pictures/Webcam/')
 parser.add_argument('--imgDim', type=int,
@@ -295,7 +294,6 @@ def ProcessImage(bgrImg, max_ratio=1):
     start = time.time()
     alignedFace = align.align(args.imgDim, rgbImg, bb,
                               landmarkIndices=utils.AlignDlib.OUTER_EYES_AND_NOSE)
-    cv2.imwrite('alignedQuery.png', alignedFace)
     if alignedFace is None:
         raise Exception("Unable to align image: {}".format(imgPath))
     if args.verbose:
