@@ -2,6 +2,9 @@
 
 Face recognition for identification case study based on [OpenFace](http://cmusatyalab.github.io/openface/) written in Python using PyTorch, OpenCV, dlib
 
+### Project home
+http://users.itk.ppke.hu/~botcs/ppcu-facerecog/
+
 ### Download repo
 ```
 git clone https://github.com/botcs/ppcu-entry/
