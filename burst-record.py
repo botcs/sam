@@ -4,14 +4,20 @@ import threading
 import time
 import cv2
 import os
+import argparse
 
 cap0 = cv2.VideoCapture(1)
 cap1 = cv2.VideoCapture(2)
 
-for cap in cap0, cap1:
-    pass
-    #cap.set(3, 1280)
-    #cap.set(4, 720)
+parser = argparse.ArgumentParser()
+parser.add_argument('--show', action='store_true')
+parser.add_argument('--hd', action='store_true')
+
+args = parser.parse_args()
+if args.hd:
+    for cap in cap0, cap1:
+        cap.set(3, 1280)
+        cap.set(4, 720)
 
 def isPressed(char, input):
     return ord(char) == input
@@ -42,15 +48,13 @@ def burstRecord(pathToDir, captureDevice, burstLength=.5):
 
 while(True):
     # Capture frame-by-frame
-    #_, frame0 = cap0.read()
-    #_, frame1 = cap1.read()
+    if args.show:
+        _, frame0 = cap0.read()
+        _, frame1 = cap1.read()
 
-    # Our operations on the frame come here
-    # gray = cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY)
-
-    # Display the resulting frame
-    #cv2.imshow('frame', np.concatenate([frame0, frame1], axis=1))
-    cv2.imshow('frame', np.eye(100))
+        cv2.imshow('frame', np.concatenate([frame0, frame1], axis=1))
+    else:
+        cv2.imshow('frame', np.eye(100))
     #print(frame0.shape)
 
     k = cv2.waitKey(1)

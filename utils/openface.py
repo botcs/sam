@@ -143,7 +143,6 @@ class netOpenFace(nn.Module):
         super(netOpenFace, self).__init__()
 
         self.gpuDevice = gpuDevice
-
         self.layer1 = Conv2d(3, 64, (7,7), (2,2), (3,3))
         self.layer2 = BatchNorm(64)
         self.layer3 = nn.ReLU()
@@ -187,9 +186,19 @@ class netOpenFace(nn.Module):
         #
         if x.size()[-1] == 128:
             x = self.resize2(self.resize1(x))
-
-        x = self.layer8(self.layer7(self.layer6(self.layer5(self.layer4(self.layer3(self.layer2(self.layer1(x))))))))
-        x = self.layer13(self.layer12(self.layer11(self.layer10(self.layer9(x)))))
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        x = self.layer6(x)
+        x = self.layer7(x)
+        x = self.layer8(x)
+        x = self.layer9(x)
+        x = self.layer10(x)
+        x = self.layer11(x)
+        x = self.layer12(x)
+        x = self.layer13(x)
         x = self.layer14(x)
         x = self.layer15(x)
         x = self.layer16(x)

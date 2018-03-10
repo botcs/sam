@@ -8,7 +8,7 @@ import time
 import argparse
 import pathlib
 import torch
-
+from torch.autograd import Variable
 
 
 
@@ -34,11 +34,6 @@ parser.add_argument('--webcam', action='store_true', help='use webcam')
 
 args = parser.parse_args()
 align = utils.AlignDlib(args.dlibFacePredictor)
-
-
-import torch
-from torch.autograd import Variable
-
 prepareOpenFace = utils.prepareOpenFace
 
 def ReadImage(imgPath):
