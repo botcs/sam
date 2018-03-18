@@ -1,3 +1,4 @@
+import pdb
 import numpy as np
 import datetime
 import threading
@@ -28,48 +29,88 @@ def TimeStamp():
     return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M-%S.') + str(ts)
 
 
-def Record(recordDir, captureDevice):
-    start = time.time()
+def mkdirMaybe(recordDir):
     if not os.path.exists(recordDir):
         os.makedirs(recordDir)
         print('New directory: %40s' % recordDir)
 
-    try:
-        while True:
-            ret, frame = captureDevice.read()
+
+def isDeviceWorking(captureDevice):
+    # returns False if not able to read a frame
+    return captureDevice.read()[0]
+
+class Record(threading.Thread):
+    def __init__(self, camID):
+        super(Record, self).__init__()
+        self._isRunning = False
+        self.camID = camID
+
+    def capture(self):
+        self.captureDevice = cv2.VideoCapture(camID)
+        if args.hd:
+            self.captureDevice.set(3, 1280)
+            self.captureDevice.set(4, 720)
+
+        self.recordDir = os.path.join(args.path, 'camdir-%d' % self.camID)
+        self.available = isDeviceWorking(self.captureDevice)
+        if not self.available:
+            print('WARNING: failed to capture device %d... NOT RECORDING'%camID)
+            return False
+        print('Recording device %d started, target path:%40s'%(camID, self.recordDir))
+        mkdirMaybe(self.recordDir)
+        return True
+
+    def run(self):
+        succesful = self.capture()
+        if not succesful:
+            return
+
+        self._isRunning = True
+        startTime = time.time()
+        count = 0
+        while self._isRunning:
+            ret, frame = self.captureDevice.read()
+            count += 1
             currTS = TimeStamp()
             filename = str(currTS) + '.jpg'
-            path = os.path.join(recordDir, filename)
+            path = os.path.join(self.recordDir, filename)
             if args.debug:
                 print('DEBUG  capture succesful:', ret, ' shape:', frame.shape)
                 print('DEBUG  Saved to: %40s' % path)
-                cv2.imshow(recordDir, frame)
-                cv2.waitKey(1)
+                #cv2.imshow(self.recordDir, frame)
+                #cv2.waitKey(1)
             else:
                 # Sometimes cv2.imwrite stucks for a while, but the loop must go on
                 threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
+        totalTime = time.time() - startTime
+        print('Finishing Recording thread, releasing device:', self.camID,
+              'frame count: %7d\t'%count,
+              'time  (sec): %7d\t'%int(totalTime),
+              '        FPS: %2.2f'%(count / totalTime))
+        self.captureDevice.release()
+
+    def stop(self):
+        self._isRunning = False
+
+
+threads = []
+print('Starting Recording threads...')
+for camID in args.cam:
+
+    camDir = os.path.join(args.path, 'camdir-%02d' % camID)
+    thread = Record(camID)
+    thread.start()
+    threads.append(thread)
+
+while threading.activeCount() > 0:
+    try:
+        time.sleep(1.)
     except KeyboardInterrupt:
-        print('Manually interrupted')
-        try:
-            sys.exit(0)
-        except SystemExit:
-            os._exit(0)
-
-
-
-caps = list(map(cv2.VideoCapture, args.cam))
-if args.hd:
-    for i in range(len(caps)):
-        caps[i].set(3, 1280)
-        caps[i].set(4, 720)
-
-for cap, cam_id in zip(caps, args.cam):
-    if args.debug:
-        print('DEBUG ', cap)
-
-    camDir = os.path.join(args.path, '%02d' % cam_id)
-    Record(camDir, cap)
-    #threading.Thread(target=Record, args=(camDir, cap))
+        print('Manually interruped')
+        print('Stopping Recording threads...')
+        for thread in threads:
+            thread.stop()
+        break
 
 
 
