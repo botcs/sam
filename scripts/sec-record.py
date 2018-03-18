@@ -7,15 +7,17 @@ import cv2
 import os
 import argparse
 import sys
+import dlib
+import glob
 
-#cap0 = cv2.VideoCapture(1)
-#cap1 = cv2.VideoCapture(2)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--hd', action='store_true')
+#parser.add_argument('--face', action='store_true')
 parser.add_argument('--path', default='recordings')
 parser.add_argument('--cam', nargs='+', type=int, default=[0])
+
 args = parser.parse_args()
 
 
@@ -39,11 +41,24 @@ def isDeviceWorking(captureDevice):
     # returns False if not able to read a frame
     return captureDevice.read()[0]
 
+
+def saveMaybe(path, frame, detector):
+    # Save frame only if dlib recognizes a face on it.
+    # Do it in grayscale to save some compute
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    hasFace = len(detector(gray, 0)) > 0
+    if hasFace:
+        cv2.imwrite(path, frame)
+        print('DEBUG  Saved to: %40s' % path)
+    return hasFace
+
 class Record(threading.Thread):
     def __init__(self, camID):
         super(Record, self).__init__()
+        self.detector = dlib.get_frontal_face_detector()
         self._isRunning = False
         self.camID = camID
+        self.count = 0
 
     def capture(self):
         self.captureDevice = cv2.VideoCapture(camID)
@@ -55,10 +70,14 @@ class Record(threading.Thread):
         self.available = isDeviceWorking(self.captureDevice)
         if not self.available:
             print('WARNING: failed to capture device %d... NOT RECORDING'%camID)
+            print('write "ls /dev/video*" to list available devices')
             return False
         print('Recording device %d started, target path:%40s'%(camID, self.recordDir))
         mkdirMaybe(self.recordDir)
         return True
+
+
+
 
     def run(self):
         succesful = self.capture()
@@ -67,26 +86,32 @@ class Record(threading.Thread):
 
         self._isRunning = True
         startTime = time.time()
-        count = 0
         while self._isRunning:
             ret, frame = self.captureDevice.read()
-            count += 1
             currTS = TimeStamp()
             filename = str(currTS) + '.jpg'
             path = os.path.join(self.recordDir, filename)
             if args.debug:
                 print('DEBUG  capture succesful:', ret, ' shape:', frame.shape)
-                print('DEBUG  Saved to: %40s' % path)
                 #cv2.imshow(self.recordDir, frame)
                 #cv2.waitKey(1)
-            else:
-                # Sometimes cv2.imwrite stucks for a while, but the loop must go on
-                threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
+
+            # if args.face:
+            #     threading.Thread(
+            #         target=saveMaybe, args=(path, frame, self.detector, self.count)
+            #     ).start()
+            #
+            # else:
+            # Sometimes cv2.imwrite stucks for a while, but the loop must go on
+            threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
+            print('DEBUG  Saved to: %40s' % path)
+            counter += 1
+
         totalTime = time.time() - startTime
         print('Finishing Recording thread, releasing device:', self.camID,
-              'frame count: %7d\t'%count,
+              'frame count: %7d\t'%self.count,
               'time  (sec): %7d\t'%int(totalTime),
-              '        FPS: %2.2f'%(count / totalTime))
+              '        FPS: %2.2f'%(self.count / totalTime))
         self.captureDevice.release()
 
     def stop(self):
