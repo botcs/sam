@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <url>
+    <loc>http://botcs.github.io/sam/projects/neural1/</loc>
+    <lastmod>2018-03-19T02:57:08+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/projects/embedded/</loc>
+    <lastmod>2018-03-19T02:45:19+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/projects/listen/</loc>
+    <lastmod>2018-03-19T03:07:16+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/about/</loc>
+    <lastmod>2018-03-19T01:41:48+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/categories/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/</loc>
+    <lastmod>2018-03-19T02:57:08+01:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/projects/</loc>
+    <lastmod>2018-03-19T02:57:08+01:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://botcs.github.io/sam/tags/</loc>
+    <priority>0</priority>
+  </url>
+  
+</urlset>
