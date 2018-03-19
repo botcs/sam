@@ -7,16 +7,15 @@ import cv2
 import os
 import argparse
 import sys
-import dlib
-import glob
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--debug', action='store_true')
-parser.add_argument('--hd', action='store_true')
 #parser.add_argument('--face', action='store_true')
-parser.add_argument('--path', default='recordings')
-parser.add_argument('--cam', nargs='+', type=int, default=[0])
+parser.add_argument('--hd', action='store_true', help='Save in 720p if possible')
+parser.add_argument('--length', type=int, default=10, help='Length in seconds to record')
+parser.add_argument('--path', default='recordings', help='directory where jpgs will be written to')
+parser.add_argument('--cam', nargs='+', type=int, default=[0], help='cam ID that OpenCV can use')
+parser.add_argument('--debug', action='store_true', help='Verbose logging of stuff')
 
 args = parser.parse_args()
 
@@ -42,20 +41,9 @@ def isDeviceWorking(captureDevice):
     return captureDevice.read()[0]
 
 
-def saveMaybe(path, frame, detector):
-    # Save frame only if dlib recognizes a face on it.
-    # Do it in grayscale to save some compute
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    hasFace = len(detector(gray, 0)) > 0
-    if hasFace:
-        cv2.imwrite(path, frame)
-        print('DEBUG  Saved to: %40s' % path)
-    return hasFace
-
 class Record(threading.Thread):
     def __init__(self, camID):
         super(Record, self).__init__()
-        self.detector = dlib.get_frontal_face_detector()
         self._isRunning = False
         self.camID = camID
         self.count = 0
@@ -72,7 +60,7 @@ class Record(threading.Thread):
             print('WARNING: failed to capture device %d... NOT RECORDING'%camID)
             print('write "ls /dev/video*" to list available devices')
             return False
-        print('Recording device %d started, target path:%40s'%(camID, self.recordDir))
+        print('Recording device %d started, target path:%40s'%(self.camID, self.recordDir))
         mkdirMaybe(self.recordDir)
         return True
 
@@ -93,19 +81,12 @@ class Record(threading.Thread):
             path = os.path.join(self.recordDir, filename)
             if args.debug:
                 print('DEBUG  capture succesful:', ret, ' shape:', frame.shape)
-                #cv2.imshow(self.recordDir, frame)
-                #cv2.waitKey(1)
 
-            # if args.face:
-            #     threading.Thread(
-            #         target=saveMaybe, args=(path, frame, self.detector, self.count)
-            #     ).start()
-            #
-            # else:
             # Sometimes cv2.imwrite stucks for a while, but the loop must go on
             threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
-            print('DEBUG  Saved to: %40s' % path)
-            counter += 1
+            if args.debug:
+                print('DEBUG  Saved to: %40s' % path)
+            self.count += 1
 
         totalTime = time.time() - startTime
         print('Finishing Recording thread, releasing device:', self.camID,
@@ -118,28 +99,39 @@ class Record(threading.Thread):
         self._isRunning = False
 
 
-threads = []
-print('Starting Recording threads...')
-for camID in args.cam:
+if __name__ == '__main__':
+    threads = []
+    print('Starting Recording threads...')
+    for camID in args.cam:
 
-    camDir = os.path.join(args.path, 'camdir-%02d' % camID)
-    thread = Record(camID)
-    thread.start()
-    threads.append(thread)
+        camDir = os.path.join(args.path, 'camdir-%02d' % camID)
+        thread = Record(camID)
+        thread.start()
+        threads.append(thread)
 
-while threading.activeCount() > 0:
-    try:
-        time.sleep(1.)
-    except KeyboardInterrupt:
-        print('Manually interruped')
-        print('Stopping Recording threads...')
-        for thread in threads:
-            thread.stop()
-        break
+    startTime = time.time()
+    totalTime = 0
+    while threading.activeCount() > 0 and totalTime < args.length:
+        try:
+            time.sleep(1.)
+        except KeyboardInterrupt:
+            print('Manually interruped')
+            break
+        finally:
+            totalTime = time.time() - startTime
 
 
+    print('Stopping Recording threads...')
+    for thread in threads:
+        thread.stop()
+        thread.join()
+    if args.debug:
+        print('Devices released succesfully')
 
-
-# When everything done, release the capture
-#cap0.release()
-#cap1.release()
+    counts = [t.count for t in threads if t.available]
+    count = sum(counts)
+    print('\n\nTotal statistics',
+          'frame count: %7d\t'%count,
+          'time  (sec): %7d\t'%int(totalTime),
+          '  FPS (avg): %2.2f'%(count / totalTime / len(counts)))
+    print('Exiting...')
