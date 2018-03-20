@@ -28,9 +28,9 @@ parser.add_argument('--imgDim', type=int,
                     help="Default image dimension.", default=96)
 parser.add_argument('--verbose', action='store_true')
 parser.add_argument('--dlib_dim', type=int, help='im size for face recognition', default=224)
-parser.add_argument('--query_path', help='query image path')
+parser.add_argument('--query_path', default='', help='query image path')
 parser.add_argument('--refresh', type=int, help='Refresh output image [sec]')
-parser.add_argument('--webcam', action='store_true', help='use webcam')
+parser.add_argument('--webcam', type=int, default=0, help='use webcam')
 
 args = parser.parse_args()
 align = utils.AlignDlib(args.dlibFacePredictor)
@@ -45,7 +45,7 @@ def ReadImage(imgPath):
         raise Exception("Unable to load image: {}".format(imgPath))
     return bgrImg
 
-def ProcessImage(bgrImg, max_ratio=1):
+def ProcessImage(bgrImg, max_ratio=1, returnBB=False):
 
     rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
     orig_rgbImg = rgbImg
@@ -88,7 +88,9 @@ def ProcessImage(bgrImg, max_ratio=1):
     I_ = torch.from_numpy(img).unsqueeze(0)
     if useCuda:
         I_ = I_.cuda()
-        return I_
+    if returnBB:
+        return I_, utils.rect_to_bb(bb, ratio)
+    return I_
 
 def find_k_nearest(query_im, k=3):
     q_var = Variable(query_im, requires_grad=False)
@@ -107,11 +109,24 @@ def find_k_nearest(query_im, k=3):
     idxs = idxs.data.cpu()
     #print(ds)
     #print(idxs)
-    if args.verbose:
-        for idx, d in zip(idxs, ds):
-            print('%30s  distance: %0.4f' % (img_paths[idx].split('/')[-1], d))
-            #torch.dot()
-            return idxs, ds
+    #for idx, d in zip(idxs, ds):
+    #    print('%30s  distance: %0.4f' % (img_paths[idx].split('/')[-1], d))
+        #torch.dot()
+    return idxs, ds
+
+def draw_bb(frame, bb):
+    x, y, w, h = bb
+    cv2.rectangle(frame, (x, y), (x + w, y + h), (200, 200, 200), 2)
+
+def draw_text(frame, bb, text, distance, threshold=0.0050,
+              x_offset=0, y_offset=0, font_scale=2, thickness=2):
+    x, y = bb[:2]
+    color = (0, 200, 0) if distance < threshold else (0, 0, 200)
+    cv2.putText(frame, text, (x + x_offset, y + y_offset),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_scale, color, thickness, cv2.LINE_AA)
+
+
 
 if __name__ == '__main__':
     #
@@ -145,46 +160,41 @@ if __name__ == '__main__':
     print("  + Forward pass took {} seconds.".format(time.time() - start))
 
 
-    if args.webcam:
-        cap = cv2.VideoCapture(1)
+    if len(args.query_path) == 0:
+        cap = cv2.VideoCapture(args.webcam)
         acc_idxs = {}
 
         imlist = []
         for img_path in img_paths:
             imlist.append(cv2.imread(img_path))
 
-        start_time = time.time()
+        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         while True:
             ret, bgrImg = cap.read()
-            cv2.imshow('frame', bgrImg)
-            cv2.waitKey(1)
+
             try:
-                query_im = ProcessImage(bgrImg, -1)
+                query_im, rect = ProcessImage(bgrImg, -1, returnBB=True)
+
                 idxs, ds = find_k_nearest(query_im, 5)
-                print('\x1b[2J')
-                for idx, d in zip(idxs, ds):
-                    print('%30s  distance: %0.4f' % (img_paths[idx].split('/')[-2], d))
+                text = img_paths[idxs[0]].split('/')[-2]
+                draw_bb(bgrImg, rect)
+                draw_text(bgrImg, rect, text, ds[0])
+                if args.verbose:
+                    #print('\x1b[2J')
+                    for idx, d in zip(idxs, ds):
+                        print('%30s  distance: %0.4f' % (text, d))
                 for idx in idxs:
                     if acc_idxs.get(idx) is None:
                         acc_idxs[idx] = 1
                     else:
                         acc_idxs[idx] += 1
-            except Exception:
+            except Exception as e:
+                print(e)
                 pass
-            passed_time = time.time() - start_time
-            if int(passed_time) % 5 == 4:
 
-                max_idx = -1
-                max_score = -1
-                for k, v in acc_idxs.items():
-                    if v > max_score:
-                        max_idx = k
-                        max_score = v
-                '''if len(acc_idxs) > 0:
-                    cv2.imshow('winname', imlist[max_idx])
-                    cv2.waitKey(1)'''
-                passed_time = 0
-                acc_idxs = {}
+            finally:
+                cv2.imshow('frame', bgrImg)
+                cv2.waitKey(1)
 
 
 
