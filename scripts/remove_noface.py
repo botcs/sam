@@ -36,7 +36,7 @@ def procImg(img_path):
             os.remove(img_path)
         return
     img_name = os.path.basename(img_path)
-    target_path = os.path.join(args.dst, img_path)
+    target_path = os.path.join(args.dst, img_name)
     rects = detector(img)
     # FPS = counter / (time.time() - start_time)
     if len(rects) > 0:
@@ -60,6 +60,7 @@ def procImg(img_path):
 
 
 if __name__ == '__main__':
+    print(args, flush=True)
     img_paths = glob.glob(args.src + '/**/*.jpg', recursive=True)
     p = Pool(args.workers)
     print(p.map(procImg, img_paths))
