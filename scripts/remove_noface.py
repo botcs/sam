@@ -10,7 +10,7 @@ import shutil
 parser = argparse.ArgumentParser()
 parser.add_argument('--src', required=True, help='Path to buffer directory')
 parser.add_argument('--dst', required=True, help='Path to store directory')
-parser.add_argument('--dryrun', action='store_true')
+parser.add_argument('--nodryrun', action='store_true')
 args = parser.parse_args()
 
 
@@ -28,7 +28,7 @@ for counter, img_path in enumerate(img_paths, 1):
             sep='   '
         )
 
-        if not dryrun:
+        if args.nodryrun:
             os.remove(img_path)
         continue
     img_name = os.path.basename(img_path)
@@ -42,7 +42,7 @@ for counter, img_path in enumerate(img_paths, 1):
             '%2d face(s) detected: %30s -> %30s' % (len(rects), img_path, target_path),
             sep='   '
         )
-        if not dryrun:
+        if args.nodryrun:
             shutil.move(img_path, target_path)
     else:
         print(
@@ -51,5 +51,5 @@ for counter, img_path in enumerate(img_paths, 1):
             'No face detected: rm %30s' % (img_path),
             sep='   '
         )
-        if not dryrun:
+        if args.nodryrun:
             os.remove(img_path)
