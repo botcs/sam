@@ -118,10 +118,14 @@ def draw_bb(frame, bb):
     x, y, w, h = bb
     cv2.rectangle(frame, (x, y), (x + w, y + h), (200, 200, 200), 2)
 
-def draw_text(frame, bb, text, distance, threshold=0.0050,
+def draw_text(frame, bb, text, distance, threshold=0.0100,
               x_offset=0, y_offset=0, font_scale=2, thickness=2):
     x, y = bb[:2]
-    color = (0, 200, 0) if distance < threshold else (0, 0, 200)
+    color = (0, 200, 0)
+    if distance > threshold:
+        color = (0, 0, 200)
+        text = 'Ismeretlen'
+
     cv2.putText(frame, text, (x + x_offset, y + y_offset),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 font_scale, color, thickness, cv2.LINE_AA)

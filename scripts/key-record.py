@@ -6,13 +6,15 @@ import cv2
 import os
 import argparse
 
-cap = cv2.VideoCapture(0)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--show', action='store_true')
 parser.add_argument('--hd', action='store_true')
+parser.add_argument('--cam', type=int, default=0)
 
 args = parser.parse_args()
+cap = cv2.VideoCapture(args.cam)
 if args.hd:
     cap.set(3, 1280)
     cap.set(4, 720)
@@ -24,7 +26,7 @@ def TimeStamp():
     ts = time.time()
     return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M-%S.%f')
 
-def burstRecord(pathToDir, captureDevice, burstLength=.5):
+def burstRecord(pathToDir, captureDevice, burstLength=1):
     start = time.time()
     if not os.path.exists(pathToDir):
         os.makedirs(pathToDir)
@@ -68,7 +70,8 @@ while(True):
     saveDirs = 'abcdefghijklmnoprstuvwxyz'
     for char in saveDirs:
         if isPressed(char, k):
-            threading.Thread(target=burstRecord, args=(char, cap)).start()
+            # threading.Thread(target=burstRecord, args=(char, cap)).start()
+            burstRecord(char, cap)
 
 
 # When everything done, release the capture
