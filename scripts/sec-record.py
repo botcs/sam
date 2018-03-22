@@ -25,10 +25,12 @@ def isPressed(char, input):
     return ord(char) == input
 
 
-def TimeStamp():
+def TimeStamp(full=True):
     ts = time.time()
-    return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M-%S.') + str(ts)
-
+    if full:
+        return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M-%S.%f')
+    else:
+        return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M')
 
 def mkdirMaybe(recordDir):
     if not os.path.exists(recordDir):
@@ -52,7 +54,7 @@ class Record(threading.Thread):
         self.captureDevice = cv2.VideoCapture(camID)
         if args.hd:
             self.captureDevice.set(3, 1280)
-            self.captureDevice.set(4, 720)
+            self.captureDevice.set(4, 480)
 
         self.recordDir = os.path.join(args.path, 'camdir-%d' % self.camID)
         self.available = isDeviceWorking(self.captureDevice)
@@ -78,7 +80,9 @@ class Record(threading.Thread):
             ret, frame = self.captureDevice.read()
             currTS = TimeStamp()
             filename = str(currTS) + '.jpg'
-            path = os.path.join(self.recordDir, filename)
+            minuteDir = os.path.join(self.recordDir, TimeStamp(full=False))
+            mkdirMaybe(minuteDir)
+            path = os.path.join(minuteDir, filename)
             if args.debug:
                 print('DEBUG  capture succesful:', ret, ' shape:', frame.shape)
 
@@ -89,11 +93,12 @@ class Record(threading.Thread):
             self.count += 1
 
         totalTime = time.time() - startTime
+        self.captureDevice.release()
         print('Finishing Recording thread, releasing device:', self.camID,
               'frame count: %7d\t'%self.count,
               'time  (sec): %7d\t'%int(totalTime),
               '        FPS: %2.2f'%(self.count / totalTime))
-        self.captureDevice.release()
+
 
     def stop(self):
         self._isRunning = False
