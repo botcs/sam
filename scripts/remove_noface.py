@@ -26,7 +26,7 @@ def isProcessed(fname):
 detector = dlib.get_frontal_face_detector()
 start_time = time.time()
 
-def procImg(img_path):1
+def procImg(img_path):
     img = cv2.imread(img_path)
     if img is None:
         print('Corrupt image: rm %30s' % (img_path))
@@ -38,7 +38,7 @@ def procImg(img_path):1
         target_path = os.path.join(args.dst, markerTag + img_name)
     else:
         # easiest solution for avoiding multiple process of the same image
-        target_path = os.path.join(args.src, markerTag + img_name)
+        target_path = os.path.join(os.path.dirname(img_path), markerTag + img_name)
     rects = detector(img)
     if len(rects) > 0:
         print('%2d face(s) detected: %30s -> %30s' % (len(rects), img_path, target_path))
@@ -54,6 +54,7 @@ if __name__ == '__main__':
     print(args, flush=True)
     while args.recheck > 0:
         img_paths = glob.glob(args.src + '/**/*.jpg', recursive=True)
+        img_paths = [path for path in img_paths if isProcessed(path)]
         print('Found %7d files in total' % len(img_paths))
         p = Pool(args.workers)
         start_time = time.time()
