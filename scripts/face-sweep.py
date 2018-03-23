@@ -12,11 +12,13 @@ from multiprocessing import Pool
 parser = argparse.ArgumentParser()
 parser.add_argument('--src', required=True, help='Path to BUFFER directory')
 parser.add_argument('--dst', help='Path to STORE directory')
-parser.add_argument('--recheck', type=int, default=0,
+parser.add_argument('--recheck', type=int, default=9999999,
                     help='Time interval (in seconds) between finishing and starting a next sweep')
 parser.add_argument('--nodryrun', action='store_true')
+parser.add_argument('--copyonly', action='store_true')
 parser.add_argument('--workers', type=int, default=1,
                     help='Number of parallel workers')
+
 args = parser.parse_args()
 
 markerTag = 'hasface-'
@@ -42,8 +44,8 @@ def procImg(img_path):
     rects = detector(img)
     if len(rects) > 0:
         print('%2d face(s) detected: %30s -> %30s' % (len(rects), img_path, target_path))
-        if args.nodryrun:
-            shutil.move(img_path, target_path)
+        if args.nodryrun or args.copyonly:
+            shutil.copy2(img_path, target_path)
     else:
         print('No face detected: rm %30s' % (img_path))
         if args.nodryrun:
@@ -54,7 +56,7 @@ if __name__ == '__main__':
     print(args, flush=True)
     while args.recheck > 0:
         img_paths = glob.glob(args.src + '/**/*.jpg', recursive=True)
-        img_paths = [path for path in img_paths if isProcessed(path)]
+        img_paths = [path for path in img_paths if not isProcessed(path)]
         print('Found %7d files in total' % len(img_paths))
         p = Pool(args.workers)
         start_time = time.time()
