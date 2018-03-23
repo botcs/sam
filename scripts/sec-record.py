@@ -51,7 +51,7 @@ class Record(threading.Thread):
         self.count = 0
 
     def capture(self):
-        self.captureDevice = cv2.VideoCapture(camID)
+        self.captureDevice = cv2.VideoCapture(self.camID)
         if args.hd:
             self.captureDevice.set(3, 1280)
             self.captureDevice.set(4, 480)
@@ -59,7 +59,7 @@ class Record(threading.Thread):
         self.recordDir = os.path.join(args.path, 'camdir-%d' % self.camID)
         self.available = isDeviceWorking(self.captureDevice)
         if not self.available:
-            print('WARNING: failed to capture device %d... NOT RECORDING'%camID)
+            print('WARNING: failed to capture device %d... NOT RECORDING'%self.camID)
             print('write "ls /dev/video*" to list available devices')
             return False
         print('Recording device %d started, target path:%40s'%(self.camID, self.recordDir))
@@ -85,6 +85,9 @@ class Record(threading.Thread):
             path = os.path.join(minuteDir, filename)
             if args.debug:
                 print('DEBUG  capture succesful:', ret, ' shape:', frame.shape)
+            if not ret:
+                print('WARNING: failed to capture device %d... NOT RECORDING'%self.camID)
+                self._isRunning = ret
 
             # Sometimes cv2.imwrite stucks for a while, but the loop must go on
             threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
@@ -109,7 +112,6 @@ if __name__ == '__main__':
     print('Starting Recording threads...')
     for camID in args.cam:
 
-        camDir = os.path.join(args.path, 'camdir-%02d' % camID)
         thread = Record(camID)
         thread.start()
         threads.append(thread)

@@ -16,7 +16,8 @@ parser.add_argument('--recheck', type=int, default=9999999,
                     help='Time interval (in seconds) between finishing and starting a next sweep')
 parser.add_argument('--nodryrun', action='store_true')
 parser.add_argument('--copyonly', action='store_true')
-parser.add_argument('--workers', type=int, default=1,
+parser.add_argument('--move', action='store_true')
+arser.add_argument('--workers', type=int, default=1,
                     help='Number of parallel workers')
 
 args = parser.parse_args()
@@ -44,8 +45,12 @@ def procImg(img_path):
     rects = detector(img)
     if len(rects) > 0:
         print('%2d face(s) detected: %30s -> %30s' % (len(rects), img_path, target_path))
-        if args.nodryrun or args.copyonly:
-            shutil.copy2(img_path, target_path)
+        if args.nodryrun: 
+            if args.move:
+                shutil.move(img_path, target_path)
+            else:
+                shutil.copy2(img_path, target_path)
+
     else:
         print('No face detected: rm %30s' % (img_path))
         if args.nodryrun:
