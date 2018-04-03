@@ -17,7 +17,7 @@ parser.add_argument('--recheck', type=int, default=9999999,
 parser.add_argument('--nodryrun', action='store_true')
 parser.add_argument('--copyonly', action='store_true')
 parser.add_argument('--move', action='store_true')
-arser.add_argument('--workers', type=int, default=1,
+parser.add_argument('--workers', type=int, default=1,
                     help='Number of parallel workers')
 
 args = parser.parse_args()
