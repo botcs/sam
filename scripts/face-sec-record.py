@@ -31,12 +31,18 @@ def isPressed(char, input):
     return ord(char) == input
 
 
-def TimeStamp(full=True):
+def TimeStamp(mode='msec'):
     ts = time.time()
-    if full:
+    if mode == 'msec':
         return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M-%S.%f')
-    else:
+    if mode == 'minute':
         return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H-%M')
+    if mode == 'hour':
+        return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d.%H')
+    if mode == 'day':
+        return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+
+
 
 def mkdirMaybe(recordDir):
     if not os.path.exists(recordDir):
@@ -86,9 +92,11 @@ class Record(threading.Thread):
         startTime = time.time()
         while self._isRunning:
             ret, frame = self.captureDevice.read()
-            currTS = TimeStamp()
+            currTS = TimeStamp(mode='msec')
             filename = str(currTS) + '.jpg'
-            minuteDir = os.path.join(self.recordDir, TimeStamp(full=False))
+            dayDir = os.path.join(self.recordDir, TimeStamp(mode='day'))
+            hourDir = os.path.join(dayDir, TimeStamp(mode='hour'))
+            minuteDir = os.path.join(hourDir, TimeStamp(mode='minute'))
             mkdirMaybe(minuteDir)
             path = os.path.join(minuteDir, filename)
             if args.debug:
