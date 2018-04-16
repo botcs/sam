@@ -116,7 +116,7 @@ class AlignDlib:
         assert rgbImg is not None
 
         try:
-            return self.detector(rgbImg, 1)
+            return self.detector(rgbImg)
         except Exception as e:
             print("Warning: {}".format(e))
             # In rare cases, exceptions are thrown.

@@ -10,6 +10,7 @@ import shutil
 from multiprocessing import Pool
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument('--src', required=True, help='Path to BUFFER directory')
 parser.add_argument('--dst', help='Path to STORE directory')
 parser.add_argument('--recheck', type=int, default=9999999,
@@ -17,6 +18,7 @@ parser.add_argument('--recheck', type=int, default=9999999,
 parser.add_argument('--nodryrun', action='store_true')
 parser.add_argument('--copyonly', action='store_true')
 parser.add_argument('--move', action='store_true')
+parser.add_argument('--countonly', '-C', action='store_true')
 parser.add_argument('--workers', type=int, default=1,
                     help='Number of parallel workers')
 
@@ -42,7 +44,7 @@ def procImg(img_path):
     else:
         # easiest solution for avoiding multiple process of the same image
         target_path = os.path.join(os.path.dirname(img_path), markerTag + img_name)
-    rects = detector(img)
+    rects = detector(img, 1)
     if len(rects) > 0:
         print('%2d face(s) detected: %30s -> %30s' % (len(rects), img_path, target_path))
         if args.nodryrun: 
@@ -63,6 +65,8 @@ if __name__ == '__main__':
         img_paths = glob.glob(args.src + '/**/*.jpg', recursive=True)
         img_paths = [path for path in img_paths if not isProcessed(path)]
         print('Found %7d files in total' % len(img_paths))
+        if args.countonly:
+            break
         p = Pool(args.workers)
         start_time = time.time()
         list(p.map(procImg, img_paths))

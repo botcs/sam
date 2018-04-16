@@ -104,3 +104,6 @@ ENV/
 *.dat
 *.pth
 recordings
+.ipynb
+*.ipynb
+*.dict

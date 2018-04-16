@@ -97,7 +97,7 @@ class Record(threading.Thread):
                 print('WARNING: failed to capture device %d... NOT RECORDING'%self.camID)
                 self._isRunning = ret
 
-            if time.time() - self.lastTriggered > args.trigger:
+            if time.time() - self.lastTriggered < args.trigger:
                 # Sometimes cv2.imwrite stucks for a while, but the loop must go on
                 threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
                 
