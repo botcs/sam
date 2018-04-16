@@ -96,24 +96,25 @@ class Record(threading.Thread):
             if not ret:
                 print('WARNING: failed to capture device %d... NOT RECORDING'%self.camID)
                 self._isRunning = ret
-
-            if time.time() - self.lastTriggered < args.trigger:
-                # Sometimes cv2.imwrite stucks for a while, but the loop must go on
-                threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
                 
-            else:
+
+            if time.time() - self.lastTriggered > args.trigger:
                 if hasFace(frame):
                     self.lastTriggered = time.time()
                     threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
                     if args.debug:
                         print('DEBUG  recorder #%d was triggered'%self.camID)
+
                 else:
                     if args.debug:
                         print('DEBUG  waiting for faces to trigger, last event was %5.2f sec ago'%(time.time()-self.lastTriggered))
                 
-                
-            if args.debug:
-                print('DEBUG  Saved to: %40s' % path)
+            else:
+                # Sometimes cv2.imwrite stucks for a while, but the loop must go on
+                threading.Thread(target=cv2.imwrite, args=(path, frame)).start()
+                if args.debug:
+                    print('DEBUG  Saved to: %40s' % path)                    
+
             self.count += 1
 
         totalTime = time.time() - startTime
