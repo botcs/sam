@@ -4,6 +4,9 @@
 
 Face recognition for identification case study written in Python using [PyTorch](http://pytorch.org/), [OpenCV](https://opencv.org/), [dlib](http://dlib.net/)
 
+Mainly motivated by [OpenFace](https://cmusatyalab.github.io/openface/) 
+[implemented](https://github.com/thnkim/OpenFacePytorch) in PyTorch.
+
 In this repository all the source are provided for our:
 - Case studies
 - Data collection / preparation mechanisms
@@ -51,17 +54,3 @@ Accuracy (top-1) | 99.6% | __99.3%__
 16x3x96x96 embedding net inference | 3.61 ms ± 141 µs | 5.08 ms ± 6.7 µs | 19.1 ms ± 967 µs
 1x3x96x96 embedding net inference | 3.5 ms ± 112 µs  | 3.56 ms ± 133 µs | 10.9 ms ± 358 µs
 K-Nearest Neighbour from 10000x128 embeddings| 386 µs ± 112 ns | 648 µs ± 194 ns |2.66 ms ± 14.8 µs
-
-
-## Usage
-### Download repo
-```
-git clone https://github.com/botcs/sam/
-```
-
-### Install requirements
-```
-pip install -r requirements.txt
-```
-
-### DEMO (soon)
