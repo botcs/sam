@@ -27,10 +27,15 @@ parser.add_argument('--embedding-weights', type=str, help="Path to dlib's face p
 parser.add_argument('--database', type=str, help='path to embedding2name database',
                     default=os.path.join(modelDir, "DEPLOY_DATABASE.tar"))
 parser.add_argument('--k', type=int, help="List top K results", default=10)
+parser.add_argument('--ratio', type=float, help="Downsample input image", default=.8)
+parser.add_argument('--display', action='store_true', help="Use OpenCV to show predictions on X")
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
+    if args.display:
+        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+        pass
 #    pirate = gatepirate.ITKGatePirate()    
     use_cuda = torch.cuda.is_available()
 
@@ -81,22 +86,27 @@ if __name__ == '__main__':
                 raise RuntimeError('Video capture was unsuccessful.')
                 
             rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
-            img = cv2.cv2.resize(rgbImg, None, fx=.5, fy=.5)
+            img = cv2.cv2.resize(rgbImg, None, fx=args.ratio, fy=args.ratio)
             
             # STEP 2: PREPROCESS IMAGE
-            bb = aligner.getLargestFaceBoundingBox(img)
-            aligned_img = aligner.align(96, img, bb=bb)
-            if aligned_img is None:
+            bb = aligner.getLargestFaceBoundingBox(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+            if bb is None:
                 if idle_begin < 0: 
                     idle_begin = time.time()
                 idle_time = time.time() - idle_begin
-                print('\t\t\tZzzzzz... No face detected (%4.0f sec)\r' % idle_time, flush=True, end='')
-                cv2.imshow('frame', bgrImg)
-                if cv2.waitKey(10) & 0xFF == ord('q'):
-                    break
+                FPS = it / (time.time()-start_time)
+                print('\t\t\tZzzzzz... No face detected (%4.0f sec), FPS:%2.2f\r' %\
+                    (idle_time, FPS), flush=True, end='')
                 
+                if args.display:
+                    cv2.imshow('frame', bgrImg)
+                    if cv2.waitKey(10) & 0xFF == ord('q'):
+                        break                
                 continue
+                
             idle_begin = -1
+            aligned_img = aligner.align(96, img, bb=bb)
+            
             #x = torch.FloatTensor(aligned_img).permute(2, 0, 1) / 255.
             x = tensor_converter(aligned_img)
             x = torch.autograd.Variable(x, volatile=True, requires_grad=False).detach()
@@ -156,31 +166,32 @@ if __name__ == '__main__':
             print('\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS))
 
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES
-            (x, y, w, h) = rect_to_bb(bb, 0.5)
-            
-            percentage = name_counter[0][1]/args.k*100
-            text = '%s %2.1f %%'%(name_counter[0][0].split()[-1], percentage)
-            x_offset = 0 
-            y_offset = 40
-            radius_addition = 15
-            font_scale = 1.5
-            thickness = 2
-            
-            color = (0, 200, 0)
-            if percentage < 65 or name_counter[0][0].find('>') > -1:
-                color = (0, 0, 200)
-            
-            
-            cv2.putText(bgrImg, text, (x + x_offset-w//2, y + h + y_offset + radius_addition),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            font_scale, color, thickness, cv2.LINE_AA)
-            
-            cv2.circle(bgrImg, (x+w//2, y+h//2), w//2+radius_addition, (255, 255, 255), 1)
+            if args.display:
+                (x, y, w, h) = rect_to_bb(bb, args.ratio)
+                
+                percentage = name_counter[0][1]/args.k*100
+                text = '%s %2.1f %%'%(name_counter[0][0].split()[-1], percentage)
+                x_offset = 0 
+                y_offset = 40
+                radius_addition = 15
+                font_scale = 1.5
+                thickness = 2
+                
+                color = (0, 170, 0)
+                if percentage < 65 or name_counter[0][0].find('>') > -1:
+                    color = (0, 0, 170)
+                
+                
+                cv2.putText(bgrImg, text, (x + x_offset-w//2, y + h + y_offset + radius_addition),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_scale, color, thickness, cv2.LINE_AA)
+                
+                cv2.circle(bgrImg, (x+w//2, y+h//2), w//2+radius_addition, (255, 255, 255), 1)
 
-            
-            cv2.imshow('frame', bgrImg)
-            if cv2.waitKey(10) & 0xFF == ord('q'):
-                break
+                
+                cv2.imshow('frame', bgrImg)
+                if cv2.waitKey(10) & 0xFF == ord('q'):
+                    break
                 
 
 
