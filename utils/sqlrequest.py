@@ -25,12 +25,9 @@ def send_query(query, verbose=True):
     
     assert response['success'], response['answer']
     if verbose:
-        time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.gmtime(end))
-        
-        print('REQUEST SUCCESS!')
         print('Length of result:', len(response['answer']))
     
-    print('Query took %3.2f sec' % (end-start))
+    print('Succesful query! took %3.2f sec' % (end-start))
     return response['answer']
 
 def send_large_query(query, batch_size=100000, verbose=True): 
