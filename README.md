@@ -1,16 +1,9 @@
-# SAM - Face recognition system
+# SAM - RESEARCH branch
 <img src="http://users.itk.ppke.hu/~botcs/sam/img/logo.png" alt="Drawing" width=128/>
 
+## Branch details
+This branch is ought keep our recent training scripts and notebooks
 
-Face recognition for identification case study written in Python using [PyTorch](http://pytorch.org/), [OpenCV](https://opencv.org/), [dlib](http://dlib.net/)
-
-In this repository all the source are provided for our:
-- Case studies
-- Data collection / preparation mechanisms
-- Training / evaluation scripts
-
-## Project home
-For news, and less tech-related info visit the project's page [PPCU - SAM](http://users.itk.ppke.hu/~botcs/sam/).
 
 ## Latest benchmarks
 
@@ -53,15 +46,4 @@ Accuracy (top-1) | 99.6% | __99.3%__
 K-Nearest Neighbour from 10000x128 embeddings| 386 µs ± 112 ns | 648 µs ± 194 ns |2.66 ms ± 14.8 µs
 
 
-## Usage
-### Download repo
-```
-git clone https://github.com/botcs/sam/
-```
-
-### Install requirements
-```
-pip install -r requirements.txt
-```
-
-### DEMO (soon)
+#### Project page
