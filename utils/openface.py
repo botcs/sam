@@ -5,10 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
 from collections import OrderedDict
-try:
-    from . SpatialCrossMapLRN_temp import SpatialCrossMapLRN_temp
-except:
-    from SpatialCrossMapLRN_temp import SpatialCrossMapLRN_temp
+from .SpatialCrossMapLRN_temp import SpatialCrossMapLRN_temp
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):

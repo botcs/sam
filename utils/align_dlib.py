@@ -104,25 +104,28 @@ class AlignDlib:
         self.detector = dlib.get_frontal_face_detector()
         self.predictor = dlib.shape_predictor(facePredictor)
 
-    def getAllFaceBoundingBoxes(self, rgbImg):
+    def getAllFaceBoundingBoxes(self, img, resize_factor=1., forceGrayScale=False):
         """
         Find all face bounding boxes in an image.
 
-        :param rgbImg: RGB image to process. Shape: (height, width, 3)
-        :type rgbImg: numpy.ndarray
         :return: All face bounding boxes in an image.
         :rtype: dlib.rectangles
         """
-        assert rgbImg is not None
+        assert img is not None
+        if resize_factor != 1.:
+            img = cv2.resize(img, None, fx=resize_factor, fy=resize_factor)
+        
+        if forceGrayScale and len(img.shape) == 3 and img.shape[-1] == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         try:
-            return self.detector(rgbImg)
+            return self.detector(img)
         except Exception as e:
             print("Warning: {}".format(e))
             # In rare cases, exceptions are thrown.
             return []
 
-    def getLargestFaceBoundingBox(self, rgbImg, skipMulti=False):
+    def getLargestFaceBoundingBox(self, rgbImg, skipMulti=False, **kwargs):
         """
         Find the largest face bounding box in an image.
 
@@ -135,7 +138,7 @@ class AlignDlib:
         """
         assert rgbImg is not None
 
-        faces = self.getAllFaceBoundingBoxes(rgbImg)
+        faces = self.getAllFaceBoundingBoxes(rgbImg, **kwargs)
         if (not skipMulti and len(faces) > 0) or len(faces) == 1:
             return max(faces, key=lambda rect: rect.width() * rect.height())
         else:
@@ -202,3 +205,31 @@ class AlignDlib:
         thumbnail = cv2.warpAffine(rgbImg, H, (imgDim, imgDim))
 
         return thumbnail
+
+    def multiAlign(self, rgbImg, imgDim, bbs=None, landmarks=None,
+        landmarkIndices=INNER_EYES_AND_BOTTOM_LIP):
+        assert imgDim is not None
+        assert rgbImg is not None
+
+
+
+        if bbs is None:
+            bbs = self.getAllFaceBoundingBoxes(rgbImg)
+        
+        thumbnails = []
+        for bb in bbs:
+            if landmarks is None:
+                landmarks = self.findLandmarks(rgbImg, bb)
+
+            npLandmarks = np.float32(landmarks)
+
+            npLandmarkIndices = np.array(landmarkIndices)
+
+            H = cv2.getAffineTransform(npLandmarks[npLandmarkIndices],
+                                       imgDim * MINMAX_TEMPLATE[npLandmarkIndices])
+            thumbnail = cv2.warpAffine(rgbImg, H, (imgDim, imgDim))
+            thumbnails.append(thumbnail)
+        if len(bbs) > 0:
+            return np.stack(thumbnails)
+
+
