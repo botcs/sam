@@ -24,7 +24,9 @@ args = parser.parse_args()
 
 detector = dlib.get_frontal_face_detector()
 def hasFace(frame):
-    rects = detector(frame)
+    grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    small_grey = cv2.resize(grey_frame, (0,0), fx=0.5, fy=0.5) 
+    rects = detector(small_grey)
     return len(rects) > 0
 
 def isPressed(char, input):
