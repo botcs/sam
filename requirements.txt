@@ -1,0 +1,4 @@
+dlib==19.10.0
+numpy==1.14.1
+torch==0.3.0b0+af3964a
+torchvision==0.2.0
