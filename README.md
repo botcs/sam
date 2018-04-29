@@ -1,16 +1,19 @@
-# SAM - Face recognition system
+# SAM - Face recognition system (DEPLOY BRANCH)
 <img src="http://users.itk.ppke.hu/~botcs/sam/img/logo.png" alt="Drawing" width=128/>
 
 
 Face recognition for identification case study written in Python using [PyTorch](http://pytorch.org/), [OpenCV](https://opencv.org/), [dlib](http://dlib.net/)
 
-In this repository all the source are provided for our:
-- Case studies
-- Data collection / preparation mechanisms
-- Training / evaluation scripts
-
-## Project home
-For news, and less tech-related info visit the project's page [PPCU - SAM](http://users.itk.ppke.hu/~botcs/sam/).
+## Branch details
+This branch is ougt to hold all the utilities and necessary stuff to run the face recognition on the Nvidia Jetson TX1 board, 
+usually referred to as the _edge_.
+#### Requirements:
+- WebCam
+- A host (for us it is TX1) capable of compiling the following:
+  - OpenCV - Video capture
+  - Dlib - Face alignment and detection
+  - PyTorch - Recognition neural network
+- A `DEPLOY_DATABASE.tar` that holds facial embeddings and corresponding data for authorization
 
 ## Latest benchmarks
 
@@ -52,16 +55,3 @@ Accuracy (top-1) | 99.6% | __99.3%__
 1x3x96x96 embedding net inference | 3.5 ms ± 112 µs  | 3.56 ms ± 133 µs | 10.9 ms ± 358 µs
 K-Nearest Neighbour from 10000x128 embeddings| 386 µs ± 112 ns | 648 µs ± 194 ns |2.66 ms ± 14.8 µs
 
-
-## Usage
-### Download repo
-```
-git clone https://github.com/botcs/sam/
-```
-
-### Install requirements
-```
-pip install -r requirements.txt
-```
-
-### DEMO (soon)
