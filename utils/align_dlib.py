@@ -104,7 +104,7 @@ class AlignDlib:
         self.detector = dlib.get_frontal_face_detector()
         self.predictor = dlib.shape_predictor(facePredictor)
 
-    def getAllFaceBoundingBoxes(self, img, resize_factor=1., forceGrayScale=False):
+    def getAllFaceBoundingBoxes(self, img, resize_factor=1., forceGrayScale=False, dlib_upsample=0):
         """
         Find all face bounding boxes in an image.
 
@@ -119,7 +119,7 @@ class AlignDlib:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         try:
-            return self.detector(img)
+            return self.detector(img, dlib_upsample)
         except Exception as e:
             print("Warning: {}".format(e))
             # In rare cases, exceptions are thrown.
