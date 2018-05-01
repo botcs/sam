@@ -2,10 +2,18 @@
 # -*- coding: utf-8 -*-
 
 import serial
-from time import sleep, time
+from time import sleep, time, strftime
 import sys
 from datetime import datetime
 import binascii
+
+OKBLUE = '\033[94m'
+GREEN = '\033[92m'
+WARNING = '\033[93m'
+RED = '\033[91m'
+NO = '\033[0m'
+BOLD = '\033[1m'
+UNDERLINE = '\033[4m'
 
 class ITKGatePirate():
     def __init__(self, port='/dev/ttyUSB0', baudrate=9600):
@@ -20,7 +28,7 @@ class ITKGatePirate():
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=self.sertimeout)
         except serial.serialutil.SerialException as e:
-            print('Error! No serial device or port is locked!')
+            print(RED+'Error! No serial device or port is locked!'+NO)
            
 
     def serial_read(self):
@@ -28,7 +36,7 @@ class ITKGatePirate():
         try:
             raw_data = self.ser.read(256);
         except serial.serialutil.SerialException as e:
-            print('Serial read error')
+            print(RED+'Serial read error'+NO)
 
         return raw_data
 
@@ -37,7 +45,7 @@ class ITKGatePirate():
         try:
             byte_count = self.ser.write(tx_data);
         except serial.serialutil.SerialException as e:
-            print('Serial write error')
+            print(RED+'Serial write error'+NO)
 
         return byte_count
 
@@ -46,6 +54,12 @@ class ITKGatePirate():
          return t
 
     def listen(self):
+        from tendo import singleton
+        try:
+            me = singleton.SingleInstance( flavor_id="listener" ) # will sys.exit(-1) if other instance is running
+        except singleton.SingleInstanceException as e:
+            sys.exit(-1)
+        print(OKBLUE+"CardID listener started at {}".format(strftime("%c"))+NO)
         try:
             with open(self.log_file_name, 'a') as logfile:
                 while True:
@@ -62,7 +76,7 @@ class ITKGatePirate():
                     elif len(raw_data) != 0:
                         print("Status: {}, raw_data={}".format(status,raw_data))
         except KeyboardInterrupt as e:
-            print("Bye.")
+            print(OKBLUE+BOLD+"Bye."+NO)
         finally:
             logfile.close()
             self.ser.close()

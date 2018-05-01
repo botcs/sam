@@ -29,6 +29,9 @@ parser.add_argument('--embedding-weights', type=str, help="Path to dlib's face p
 parser.add_argument('--database', type=str, help='path to embedding2name database',
                     default=os.path.join(modelDir, "DEPLOY_DATABASE.tar"))
 parser.add_argument('--k', type=int, help="List top K results", default=10)
+parser.add_argument('--threshold', type=int, help="Threshold for opening count in %%", default=75)
+parser.add_argument('--consecutive', type=int, help="How many frames is required to be authorized as the same person", 
+                    default=10)
 parser.add_argument('--ratio', type=float, help="Downsample input image", default=.8)
 parser.add_argument('--display', action='store_true', help="Use OpenCV to show predictions on X")
 
@@ -78,6 +81,8 @@ if __name__ == '__main__':
     it = 0
     start_time = time.time()
     idle_begin = -1
+    last_name = ''
+    consecutive_occurrence = 0
     print('Begin capture')
     while True:
         it += 1
@@ -88,7 +93,7 @@ if __name__ == '__main__':
                 raise RuntimeError('Video capture was unsuccessful.')
                 
             rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
-            img = cv2.cv2.resize(rgbImg, None, fx=args.ratio, fy=args.ratio)
+            img = cv2.resize(rgbImg, None, fx=args.ratio, fy=args.ratio)
             
             # STEP 2: PREPROCESS IMAGE
             bb = aligner.getLargestFaceBoundingBox(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
@@ -139,17 +144,16 @@ if __name__ == '__main__':
  
             # STEP 5: OPEN TURNSPIKE
             # TODO: design a good policy
-            for name, _ in name_counter[:1]:
-                if len(name) > 0:
-                    #print('OPEN:', name, card_db[name])
+            if name_counter[0][1]/args.k > args.threshold and last_name == name_counter[0][0]:
+                consecutive_occurrence += 1
+                if consecutive_occurrence >= args.consecutive:
+                    print('OPEN:', name, card_db[name])
                     #pirate.emulateCardID(card_db[name])
                     # Wait a few secs before continuing
-                    #time.sleep(1.5)
-                    break
-                else:
-                    pass
-                    #print('Negative sample found')
-            
+	            #time.sleep(1.5)
+            else:
+                last_name = name_counter[0][0]
+                consecutive_occurrence = 0
             
             # STEP 6: SHOW RESULTS
             print('\x1b[2J')
@@ -177,8 +181,11 @@ if __name__ == '__main__':
                 thickness = 2
                 
                 color = (0, 170, 0)
-                if percentage < 65 or name_counter[0][0].find('>') > -1:
+                if percentage < args.threshold or name_counter[0][0].find('>') > -1:
                     color = (0, 0, 170)
+
+                if consecutive_occurrence + args.consecutive / 3 > args.consecutive:
+                    color = (170, 0, 0)
                 
                 
                 cv2.putText(bgrImg, text, (x + x_offset-w//2, y + h + y_offset + radius_addition),
