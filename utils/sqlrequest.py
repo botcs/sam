@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 import sys
 
-with open('/home/csbotos/sam/utils/db-password') as dbpf:
+with open('/home/nvidia/sam/utils/db-password') as dbpf:
     dbp = dbpf.readline()
 
 def send_query(query, verbose=True):

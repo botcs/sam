@@ -41,7 +41,7 @@ if __name__ == '__main__':
     if args.display:
         cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         pass
-    #pirate = gatepirate.ITKGatePirate()    
+    pirate = gatepirate.ITKGatePirate()    
     use_cuda = torch.cuda.is_available()
 
     if use_cuda:
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     deploy_database = torch.load(args.database)
     names = deploy_database['names']
     cards = deploy_database['cards']
-    embedding_vectors = deploy_database['embeddings']
+    embedding_vectors = deploy_database['embeddings'].half()
     print('Size of database: %5d samples' % len(embedding_vectors))     
 
 
@@ -93,10 +93,10 @@ if __name__ == '__main__':
                 raise RuntimeError('Video capture was unsuccessful.')
                 
             rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
-            img = cv2.resize(rgbImg, None, fx=args.ratio, fy=args.ratio)
-            
+            bgrImg_resized = cv2.resize(bgrImg, None, fx=args.ratio, fy=args.ratio)
+            img = rgbImg
             # STEP 2: PREPROCESS IMAGE
-            bb = aligner.getLargestFaceBoundingBox(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+            bb = aligner.getLargestFaceBoundingBox(cv2.cvtColor(bgrImg_resized, cv2.COLOR_BGR2GRAY))
             if bb is None:
                 if idle_begin < 0: 
                     idle_begin = time.time()
@@ -123,7 +123,7 @@ if __name__ == '__main__':
             
             # STEP 3: EMBEDD IMAGE
             inference_start = time.time()
-            embedding128, _ = net(x)
+            embedding128 = net(x)[0].half()
             inference_time = time.time() - inference_start            
 
            
@@ -144,11 +144,13 @@ if __name__ == '__main__':
  
             # STEP 5: OPEN TURNSPIKE
             # TODO: design a good policy
-            if name_counter[0][1]/args.k *100 > args.threshold and last_name == name_counter[0][0]:
+            if name_counter[0][0].find('<') == -1 and name_counter[0][1]/args.k *100 > args.threshold and last_name == name_counter[0][0]:
                 consecutive_occurrence += 1
                 if consecutive_occurrence >= args.consecutive:
                     print('OPEN:', last_name, card_db[last_name])
-                    #pirate.emulateCardID(card_db[name])
+                    if last_name in ['botcs', 'mitle', 'hakta', 'stela']:
+                        pirate.emulateCardID(card_db[last_name])
+                
                     # Wait a few secs before continuing
 	            #time.sleep(1.5)
             else:
@@ -156,7 +158,7 @@ if __name__ == '__main__':
                 consecutive_occurrence = 0
             
             # STEP 6: SHOW RESULTS
-            print('\x1b[2J')
+            #print('\x1b[2J')
             print('consec', consecutive_occurrence, 'name', last_name)
             print('\t\t\tBENCHMARK WITH NAMES...\n')
             print('\t\t\t%20s:\t%4s:'%('name hash', 'occurrence'))
@@ -174,7 +176,7 @@ if __name__ == '__main__':
                 (x, y, w, h) = rect_to_bb(bb, args.ratio)
                 
                 percentage = name_counter[0][1]/args.k*100
-                text = '%8s %2.1f %%'%(name_counter[0][0].split()[-1], percentage)
+                text = '%s %2d %%'%(name_counter[0][0].split()[-1], percentage)
                 x_offset = 0 
                 y_offset = 40
                 radius_addition = 15

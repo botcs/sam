@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser()
 #parser.add_argument('--face', action='store_true')
 parser.add_argument('--hd', action='store_true', help='Save in 720p if possible')
 parser.add_argument('--length', type=int, default=10, help='Length in seconds before exiting')
-parser.add_argument('--trigger', type=float, default=1.5, help='Length in seconds to record when triggered')
+parser.add_argument('--trigger', type=float, default=4.5, help='Length in seconds to record when triggered')
 parser.add_argument('--path', default='recordings', help='directory where jpgs will be written to')
 parser.add_argument('--cam', nargs='+', type=int, default=[0], help='cam ID that OpenCV can use')
 parser.add_argument('--debug', action='store_true', help='Verbose logging of stuff')
@@ -24,9 +24,7 @@ args = parser.parse_args()
 
 detector = dlib.get_frontal_face_detector()
 def hasFace(frame):
-    grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    small_grey = cv2.resize(grey_frame, (0,0), fx=0.5, fy=0.5) 
-    rects = detector(small_grey)
+    rects = detector(frame)
     return len(rects) > 0
 
 def isPressed(char, input):

@@ -163,7 +163,7 @@ class AlignDlib:
 
     def align(self, imgDim, rgbImg, bb=None,
               landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP,
-              skipMulti=False):
+              skipMulti=False, ratio=1):
         r"""align(imgDim, rgbImg, bb=None, landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP)
 
         Transform and align a face in an image.
@@ -194,8 +194,11 @@ class AlignDlib:
             if bb is None:
                 return
 
+        #bb = dlib.rectangle(bb.)
+
         if landmarks is None:
             landmarks = self.findLandmarks(rgbImg, bb)
+
 
         npLandmarks = np.float32(landmarks)
         npLandmarkIndices = np.array(landmarkIndices)
