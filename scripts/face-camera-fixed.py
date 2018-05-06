@@ -9,6 +9,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--grey', action='store_true')
 parser.add_argument('--xywh', type=int, nargs=4)
+parser.add_argument('--display', action='store_true')
 args = parser.parse_args()
 
 if args.xywh:
@@ -35,22 +36,24 @@ while(True):
         rects = []
         for r in rel_rects:
             rects.append(dlib.rectangle(r.left()+xmin, r.top()+ymin, r.right()+xmin, r.bottom()+ymin))
+        # Draw peephole's bounding box
+        cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 255), 1)
         
     else:
         rects = detector(frame)
 
-    # Draw peephole's bounding box
-    cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 255), 1)
+
     
     for rect in rects:
         cv2.rectangle(frame, (rect.left(), rect.top()), (rect.right(), rect.bottom()), (0, 255, 0), 2)
     
     FPS = i / (time.time()-start_time)
     print('FPS=%3.3f'%FPS)
-    # Display the resulting frame
-    cv2.imshow('frame',frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    if args.display:
+        # Display the resulting frame
+        cv2.imshow('frame',frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 # When everything done, release the capture
 cap.release()
