@@ -92,7 +92,7 @@ class AlignDlib:
     INNER_EYES_AND_BOTTOM_LIP = [39, 42, 57]
     OUTER_EYES_AND_NOSE = [36, 45, 33]
 
-    def __init__(self, facePredictor):
+    def __init__(self, facePredictor, region=None, grayScale=False):
         """
         Instantiate an 'AlignDlib' object.
 
@@ -103,8 +103,38 @@ class AlignDlib:
 
         self.detector = dlib.get_frontal_face_detector()
         self.predictor = dlib.shape_predictor(facePredictor)
+        self.grayScale = grayScale
 
-    def getAllFaceBoundingBoxes(self, img, resize_factor=1., forceGrayScale=False):
+        if region:
+            self.region = region            
+
+            self.regionXmin = region[0]
+            self.regionYmin = region[1]
+            self.regionXmax = self.regionXmin + region[2]
+            self.regionYmax = self.regionYmin + region[3]
+
+
+    def detectRegion(self, img):
+        '''
+        only run detector in a small region of the image
+        region format is: Xmin Ymin, Width, Height
+        '''
+        assert self.region is not None, 'No region given at __init__ call'
+        peephole = img[self.regionYmin:self.regionYmax, self.regionXmin:self.regionXmax]
+        rel_rects = self.detector(peephole)
+        rects = []
+        for r in rel_rects:
+            bbXmin = r.left() + self.regionXmin
+            bbYmin = r.top() + self.regionYmin
+            bbXmax = r.right() + self.regionXmin
+            bbYmax = r.bottom() + self.regionYmin
+            rects.append(dlib.rectangle(bbXmin, bbYmin, bbXmax, bbYmax))
+        
+        return rects
+        
+
+
+    def getAllFaceBoundingBoxes(self, img):
         """
         Find all face bounding boxes in an image.
 
@@ -112,17 +142,18 @@ class AlignDlib:
         :rtype: dlib.rectangles
         """
         assert img is not None
-        if resize_factor != 1.:
-            img = cv2.resize(img, None, fx=resize_factor, fy=resize_factor)
         
-        if forceGrayScale and len(img.shape) == 3 and img.shape[-1] == 3:
+        if self.grayScale and len(img.shape) == 3 and img.shape[-1] == 3:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         try:
+            if self.detectRegion:
+                return self.detectRegion(img)
             return self.detector(img)
         except Exception as e:
             print("Warning: {}".format(e))
-            # In rare cases, exceptions are thrown.
+            # In rare cases, exceptions are thrown with random memory failures...
+            # Who cares?!
             return []
 
     def getLargestFaceBoundingBox(self, rgbImg, skipMulti=False, **kwargs):
@@ -208,6 +239,9 @@ class AlignDlib:
         thumbnail = cv2.warpAffine(rgbImg, H, (imgDim, imgDim))
 
         return thumbnail
+
+   
+
 
     def multiAlign(self, rgbImg, imgDim, bbs=None, landmarks=None,
         landmarkIndices=INNER_EYES_AND_BOTTOM_LIP):

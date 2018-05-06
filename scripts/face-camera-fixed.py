@@ -7,16 +7,16 @@ cap = cv2.VideoCapture(0)
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--grey', action='store_true')
-parser.add_argument('--xywh', type=int, nargs=4)
+parser.add_argument('--gray', action='store_true')
+parser.add_argument('--region', type=int, nargs=4)
 parser.add_argument('--display', action='store_true')
 args = parser.parse_args()
 
-if args.xywh:
-    xmin = args.xywh[0]
-    ymin = args.xywh[1]
-    xmax = xmin + args.xywh[2]
-    ymax = ymin + args.xywh[3]
+if args.region:
+    xmin = args.region[0]
+    ymin = args.region[1]
+    xmax = xmin + args.region[2]
+    ymax = ymin + args.region[3]
 
 
 
@@ -28,17 +28,16 @@ while(True):
     # Capture frame-by-frame
     ret, frame = cap.read()
     # Our operations on the frame come here
-    if args.grey:
+    if args.gray:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    if args.xywh:        
+    if args.region:        
         peephole = frame[ymin:ymax, xmin:xmax]
         rel_rects = detector(peephole, 0)
         rects = []
         for r in rel_rects:
             rects.append(dlib.rectangle(r.left()+xmin, r.top()+ymin, r.right()+xmin, r.bottom()+ymin))
         # Draw peephole's bounding box
-        cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 255), 1)
-        
+        cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 255), 1)        
     else:
         rects = detector(frame)
 

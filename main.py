@@ -10,8 +10,6 @@ import cv2
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from torchvision.transforms import ToTensor
-
-
 from utils import prepareOpenFace, AlignDlib, rect_to_bb
 import gatepirate
 
@@ -32,16 +30,18 @@ parser.add_argument('--k', type=int, help="List top K results", default=100)
 parser.add_argument('--threshold', type=int, help="Threshold for opening count in %%", default=50)
 parser.add_argument('--consecutive', type=int, help="How many frames is required to be authorized as the same person", 
                     default=30)
-parser.add_argument('--ratio', type=float, help="Downsample input image", default=.8)
+                    
+parser.add_argument('--gray', action='store_true')
+parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region')
 parser.add_argument('--display', action='store_true', help="Use OpenCV to show predictions on X")
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
     if args.display:
-        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+        #cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         pass
-    pirate = gatepirate.ITKGatePirate()    
+    #pirate = gatepirate.ITKGatePirate()    
     use_cuda = torch.cuda.is_available()
 
     if use_cuda:
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     
     print('Model loaded')
     
-    aligner = AlignDlib(args.dlib)    
+    aligner = AlignDlib(args.dlib, region=args.region, grayScale=args.gray)    
     tensor_converter = ToTensor()
 
     cap = cv2.VideoCapture(0)
@@ -92,11 +92,7 @@ if __name__ == '__main__':
             if not ret:
                 raise RuntimeError('Video capture was unsuccessful.')
                 
-            rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
-            bgrImg_resized = cv2.resize(bgrImg, None, fx=args.ratio, fy=args.ratio)
-            img = rgbImg
-            # STEP 2: PREPROCESS IMAGE
-            bb = aligner.getLargestFaceBoundingBox(cv2.cvtColor(bgrImg_resized, cv2.COLOR_BGR2GRAY))
+            bb = aligner.getLargestFaceBoundingBox(bgrImg)
             if bb is None:
                 if idle_begin < 0: 
                     idle_begin = time.time()
@@ -106,12 +102,24 @@ if __name__ == '__main__':
                     (idle_time, FPS), flush=True, end='')
                 
                 if args.display:
+                    if args.region:
+                        # Draw region
+                        
+                        topleft = (aligner.regionXmin, aligner.regionYmin)
+                        bottomright = (aligner.regionXmax, aligner.regionYmax)
+                        cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
+
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break                
                 continue
                 
             idle_begin = -1
+        
+
+            # STEP 2: PREPROCESS IMAGE
+            rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
+            img = rgbImg
             aligned_img = aligner.align(96, img, bb=bb)
             
             #x = torch.FloatTensor(aligned_img).permute(2, 0, 1) / 255.
@@ -147,9 +155,9 @@ if __name__ == '__main__':
             if name_counter[0][0].find('<') == -1 and name_counter[0][1]/args.k *100 > args.threshold and last_name == name_counter[0][0]:
                 consecutive_occurrence += 1
                 if consecutive_occurrence >= args.consecutive:
-                    print('OPEN:', last_name, card_db[last_name])
                     if last_name in ['botcs', 'mitle', 'hakta', 'stela']:
-                        pirate.emulateCardID(card_db[last_name])
+                        print('OPEN:', last_name, card_db[last_name])
+                        #pirate.emulateCardID(card_db[last_name])
                 
                     # Wait a few secs before continuing
 	            #time.sleep(1.5)
@@ -173,10 +181,9 @@ if __name__ == '__main__':
 
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES
             if args.display:
-                (x, y, w, h) = rect_to_bb(bb, args.ratio)
+                (x, y, w, h) = rect_to_bb(bb)
                 
                 percentage = name_counter[0][1]/args.k*100
-                text = '%s %2d %%'%(name_counter[0][0].split()[-1], percentage)
                 x_offset = 0 
                 y_offset = 40
                 radius_addition = 15
@@ -186,23 +193,28 @@ if __name__ == '__main__':
                 #color = (200, 200, 200)
                 if percentage < args.threshold or name_counter[0][0].find('>') > -1:
                     color = (0, 0, 200)
+                    text = '<UNK>'
+    
                 else: #consecutive_occurrence + args.consecutive / 3 > args.consecutive:
                     ratio = max(args.consecutive - consecutive_occurrence, 0) / args.consecutive
                     print(ratio)
                     color = (ratio * 200, 200, ratio * 200)
+                    text = '%s %2d %%'%(name_counter[0][0].split()[-1], percentage)
                 
                 
                 cv2.putText(bgrImg, text, (x + x_offset-w//2, y + h + y_offset + radius_addition),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_scale, color, thickness, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale, color, thickness, cv2.LINE_AA)
                 
                 circle_color = (255, 255, 255)
                 circle_thickness = 1 
                 if consecutive_occurrence >= args.consecutive:
                     circle_color = (0, 200, 0) 
                     circle_thickness = 5
-                
-                cv2.circle(bgrImg, (x+w//2, y+h//2), w//2+radius_addition, circle_color, circle_thickness)
+                print((bb.left(), bb.top()), (bb.right(), bb.bottom()))
+                #cv2.rectangle(bgrImg, (bb.left(), bb.top()), (bb.right(), bb.bottom()), (0, 255, 0), 2)
+
+                cv2.circle(bgrImg, (x+w//2, y+h//2), w//2+radius_addition, circle_color, circle_thickness)        
 
                 
                 cv2.imshow('frame', bgrImg)
