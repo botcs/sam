@@ -8,20 +8,16 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--grey', action='store_true')
-
+parser.add_argument('--xywh', type=int, nargs=4)
 args = parser.parse_args()
 
-def rect_to_bb(rect):
-	# take a bounding predicted by dlib and convert it
-	# to the format (x, y, w, h) as we would normally do
-	# with OpenCV
-	x = rect.left()
-	y = rect.top()
-	w = rect.right() - x
-	h = rect.bottom() - y
+if args.xywh:
+    xmin = args.xywh[0]
+    ymin = args.xywh[1]
+    xmax = xmin + args.xywh[2]
+    ymax = ymin + args.xywh[3]
 
-	# return a tuple of (x, y, w, h)
-	return (x, y, w, h)
+
 
 detector = dlib.get_frontal_face_detector()
 i = 0
@@ -30,16 +26,24 @@ while(True):
     i += 1
     # Capture frame-by-frame
     ret, frame = cap.read()
-
     # Our operations on the frame come here
     if args.grey:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    
-    rects = detector(frame, 0)
+    if args.xywh:        
+        peephole = frame[ymin:ymax, xmin:xmax]
+        rel_rects = detector(peephole, 0)
+        rects = []
+        for r in rel_rects:
+            rects.append(dlib.rectangle(r.left()+xmin, r.top()+ymin, r.right()+xmin, r.bottom()+ymin))
+        
+    else:
+        rects = detector(frame)
 
+    # Draw peephole's bounding box
+    cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 255), 1)
+    
     for rect in rects:
-        (x, y, w, h) = rect_to_bb(rect)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.rectangle(frame, (rect.left(), rect.top()), (rect.right(), rect.bottom()), (0, 255, 0), 2)
     
     FPS = i / (time.time()-start_time)
     print('FPS=%3.3f'%FPS)
