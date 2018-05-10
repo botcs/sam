@@ -1,38 +1,27 @@
-# -*- coding: utf-8 -*-
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
 
-import serial
-import binascii
-from time import sleep
-import sys
-import datetime
+import gatepirate
+from bcolors import *
+from time import sleep, time
+from datetime import datetime
 
-port = '/dev/ttyUSB0'
-baudrate = 9600
-if len(sys.argv) > 2:
-	port = sys.argv[1]
-	baudrate = int(sys.argv[2])
-
-channel_number = 4
-
-with serial.Serial(port, baudrate, timeout=0.1) as ser:
+do_forever = True
+while do_forever:
     try:
-        while True:
-            raw_data = ser.read(256);
-            if len(raw_data) != 0:
-                if len(raw_data) == 5:
-                    #hexCardID = binascii.hexlify(raw_data[4:0:-1]).decode()
-                    hexCardID = binascii.hexlify(raw_data[1:]).decode()
-                    channel = chr(raw_data[0])
-                    if channel in [chr(i) for i in range(ord('A'),ord('A')+channel_number)]:
-                        print("0x{} on channel {} at".format(hexCardID, channel, str(datetime.datetime.now())))
-                else:
-                    try:
-                        print_text = raw_data.decode('ascii')
-                    except Exception as e:
-                        print_text = str(e) + ' at {}'.format(str(datetime.datetime.now())) + '\r\n'
-                    finally:
-                        print(print_text, end='')
-
+        vau = gatepirate.ITKGatePirate()
+        vau.listen()
     except KeyboardInterrupt as e:
-        print("Bye.")
+        print(OKBLUE+BOLD+"Bye!"+NO)
+        do_forever = False
+    except Exception as e:
+        str="Exception occured at {}, restarting soon...".format(str(datetime.fromtimestamp(int(time()))))
+        print(RED+str)
+        print(str(e))
+        print(NO)
+        with open('card_log.error.log', 'a') as logfile:
+            logfile.write(str+"\n")
+            logfile.write(str(e))
+        sleep(15)
+
+
