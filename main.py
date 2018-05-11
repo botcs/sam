@@ -108,7 +108,12 @@ if __name__ == '__main__':
                         topleft = (aligner.regionXmin, aligner.regionYmin)
                         bottomright = (aligner.regionXmax, aligner.regionYmax)
                         cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
-
+                        cv2.putText(
+                            bgrImg, 'Looking for a face...', 
+                            (aligner.regionXmin, aligner.regionYmax+40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.2, (0, 0, 200), thickness, cv2.LINE_AA)
+            
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break                
@@ -184,7 +189,7 @@ if __name__ == '__main__':
                 (x, y, w, h) = rect_to_bb(bb)
                 
                 percentage = name_counter[0][1]/args.k*100
-                x_offset = 0 
+                x_offset = 40
                 y_offset = 40
                 radius_addition = 15
                 font_scale = 1.5
