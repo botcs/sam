@@ -10,8 +10,8 @@ import cv2
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from torchvision.transforms import ToTensor
-from utils import prepareOpenFace, AlignDlib, rect_to_bb
-import gatepirate
+from utils import prepareOpenFace, AlignDlib, rect_to_bb, ITKGatePirate
+#import gatepirate
 
 containing_dir = str(pathlib.Path(__file__).resolve().parent)
 
@@ -38,10 +38,17 @@ parser.add_argument('--display', action='store_true', help="Use OpenCV to show p
 args = parser.parse_args()
 
 if __name__ == '__main__':
+
+    cap = cv2.VideoCapture(0)
+    ret, _ = cap.read()
+    if not ret:
+        raise RuntimeError('Video capture was unsuccessful.')
+    
+
     if args.display:
         #cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         pass
-    #pirate = gatepirate.ITKGatePirate()    
+    pirate = ITKGatePirate()    
     use_cuda = torch.cuda.is_available()
 
     if use_cuda:
@@ -77,7 +84,7 @@ if __name__ == '__main__':
     aligner = AlignDlib(args.dlib, region=args.region, grayScale=args.gray)    
     tensor_converter = ToTensor()
 
-    cap = cv2.VideoCapture(0)
+    last_cardwrite = time.time()
     it = 0
     start_time = time.time()
     idle_begin = -1
@@ -94,6 +101,7 @@ if __name__ == '__main__':
                 
             bb = aligner.getLargestFaceBoundingBox(bgrImg)
             if bb is None:
+                consecutive_occurrence = 0
                 if idle_begin < 0: 
                     idle_begin = time.time()
                 idle_time = time.time() - idle_begin
@@ -112,7 +120,7 @@ if __name__ == '__main__':
                             bgrImg, 'Looking for a face...', 
                             (aligner.regionXmin, aligner.regionYmax+40),
                             cv2.FONT_HERSHEY_SIMPLEX,
-                            1.2, (0, 0, 200), thickness, cv2.LINE_AA)
+                            1.2, (0, 0, 200), 1, cv2.LINE_AA)
             
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
@@ -159,10 +167,11 @@ if __name__ == '__main__':
             # TODO: design a good policy
             if name_counter[0][0].find('<') == -1 and name_counter[0][1]/args.k *100 > args.threshold and last_name == name_counter[0][0]:
                 consecutive_occurrence += 1
-                if consecutive_occurrence >= args.consecutive:
+                if consecutive_occurrence >= args.consecutive and (time.time() - last_cardwrite) > 3:
                     if last_name in ['botcs', 'mitle', 'hakta', 'stela']:
                         print('OPEN:', last_name, card_db[last_name])
-                        #pirate.emulateCardID(card_db[last_name])
+                        pirate.emulateCardID(card_db[last_name])
+                        last_cardwrite = time.time()
                 
                     # Wait a few secs before continuing
 	            #time.sleep(1.5)
