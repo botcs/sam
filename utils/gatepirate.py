@@ -48,6 +48,7 @@ class ITKGatePirate():
         try:
             tm = int(time()*1000)
             while len(raw_data) < num and (int(time()*1000)-tm < timeout):
+                sleep(0.01)
                 ch = self.ser.read(1);
                 if len(ch) != 0:
                     tm = int(time()*1000)
@@ -114,8 +115,6 @@ class ITKGatePirate():
                         print(print_str, end='')
                     elif len(raw_data) != 0:
                         print("Status: {}, raw_data={}".format(status,raw_data))
-        except KeyboardInterrupt as e:
-            print(OKBLUE+BOLD+"Bye."+NO)
         finally:
             logfile.close()
             self.ser.close()
@@ -238,16 +237,4 @@ class ITKGatePirate():
             time.sleep(2) # recieving buffer must be empty
         if serial_write(self.reset_command.encode()) != 1:
             return -3
-
-def main():
-    if len(sys.argv) > 1:
-        port = sys.argv[1]
-        vau = ITKGatePirate(port=port)
-    else:
-        vau = ITKGatePirate()
-
-    vau.listen()
-
-if __name__ == "__main__":
-    main()
 
