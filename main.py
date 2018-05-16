@@ -66,9 +66,9 @@ if __name__ == '__main__':
     if args.display:
         cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         if args.fullscreen:
-            cv2.namedWindow('window', cv2.WND_PROP_FULLSCREEN)
+            cv2.namedWindow('frame', cv2.WND_PROP_FULLSCREEN)
             cv2.setWindowProperty(
-                'window',cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
+                'frame',cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
 
     if not args.virtual:
         pirate = ITKGatePirate()    
