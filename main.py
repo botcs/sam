@@ -10,8 +10,8 @@ import cv2
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from torchvision.transforms import ToTensor
-from utils import prepareOpenFace, AlignDlib, rect_to_bb, ITKGatePirate
-#import gatepirate
+from utils import prepareOpenFace, AlignDlib, rect_to_bb, send_query, ITKGatePirate, AsyncSaver
+
 
 containing_dir = str(pathlib.Path(__file__).resolve().parent)
 
@@ -20,37 +20,60 @@ modelDir = os.path.join(fileDir, 'weights')
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--dlib', type=str, help="Path to dlib's face predictor.",
-                    default=os.path.join(modelDir, "shape_predictor_68_face_landmarks.dat"))
-parser.add_argument('--embedding-weights', type=str, help="Path to dlib's face predictor.",
-                    default=os.path.join(modelDir, "openface.pth"))
+parser.add_argument('--dlib', type=str, help='Path to dlib\'s face predictor.',
+                    default=os.path.join(modelDir, 'shape_predictor_68_face_landmarks.dat'))
+parser.add_argument('--embedding-weights', type=str, help='Path to embedding network weights',
+                    default=os.path.join(modelDir, 'openface.pth'))
 parser.add_argument('--database', type=str, help='path to embedding2name database',
-                    default=os.path.join(modelDir, "DEPLOY_DATABASE.tar"))
-parser.add_argument('--k', type=int, help="List top K results", default=100)
-parser.add_argument('--threshold', type=int, help="Threshold for opening count in %%", default=50)
-parser.add_argument('--consecutive', type=int, help="How many frames is required to be authorized as the same person", 
+                    default=os.path.join(modelDir, 'DEPLOY_DATABASE.tar'))
+parser.add_argument('--k', type=int, help='List top K results', default=100)
+parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=50)
+parser.add_argument('--consecutive', type=int, help='How many frames is required to be authorized as the same person', 
                     default=30)
                     
 parser.add_argument('--gray', action='store_true')
-parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region')
-parser.add_argument('--display', action='store_true', help="Use OpenCV to show predictions on X")
+parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region', default=[200, 100, 150, 150])
+parser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
+parser.add_argument('--virtual', action='store_true', help='Disable card reader')
+parser.add_argument('--fullscreen', action='store_true', help='Enable Full Screen display. Only available if --display is used')
+parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 
 args = parser.parse_args()
 
+def SQLInsert(cardid, channel='A', t_now=None, status=1):
+    if t_now is None:
+        t_now = int(time.time()*1000)
+        
+    SQL_INSERT = '''
+        INSERT INTO card_write_log(card_ID, timestamp, gate, success)
+        VALUES('{card_ID}', {timestamp}, '{gate}', {success})
+    '''.format(card_ID=cardid, timestamp=t_now, gate=channel, success=status)
+    send_query(SQL_INSERT)
+
+
 if __name__ == '__main__':
 
+
+    # Pre-check webcam before loading every other module
     cap = cv2.VideoCapture(0)
     ret, _ = cap.read()
     if not ret:
         raise RuntimeError('Video capture was unsuccessful.')
-    
+
+
+    AS = AsyncSaver(camID=0, rootPath='recordings/')
 
     if args.display:
-        #cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
-        pass
-    pirate = ITKGatePirate()    
-    use_cuda = torch.cuda.is_available()
+        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+        if args.fullscreen:
+            cv2.namedWindow('frame', cv2.WND_PROP_FULLSCREEN)
+            cv2.setWindowProperty(
+                'frame',cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
 
+    if not args.virtual:
+        pirate = ITKGatePirate()    
+        
+    use_cuda = torch.cuda.is_available()
     if use_cuda:
         print('CUDA is used')
         cudnn.benchmark = True
@@ -101,7 +124,6 @@ if __name__ == '__main__':
                 
             bb = aligner.getLargestFaceBoundingBox(bgrImg)
             if bb is None:
-                consecutive_occurrence = 0
                 if idle_begin < 0: 
                     idle_begin = time.time()
                 idle_time = time.time() - idle_begin
@@ -120,7 +142,7 @@ if __name__ == '__main__':
                             bgrImg, 'Looking for a face...', 
                             (aligner.regionXmin, aligner.regionYmax+40),
                             cv2.FONT_HERSHEY_SIMPLEX,
-                            1.2, (0, 0, 200), 1, cv2.LINE_AA)
+                                1.2, (0, 0, 200), 1, cv2.LINE_AA)
             
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
@@ -128,6 +150,7 @@ if __name__ == '__main__':
                 continue
                 
             idle_begin = -1
+            AS.save(bgrImg, bb)
         
 
             # STEP 2: PREPROCESS IMAGE
@@ -167,14 +190,16 @@ if __name__ == '__main__':
             # TODO: design a good policy
             if name_counter[0][0].find('<') == -1 and name_counter[0][1]/args.k *100 > args.threshold and last_name == name_counter[0][0]:
                 consecutive_occurrence += 1
-                if consecutive_occurrence >= args.consecutive and (time.time() - last_cardwrite) > 3:
-                    if last_name in ['botcs', 'mitle', 'hakta', 'stela']:
+                if consecutive_occurrence >= args.consecutive:
+                    if last_name in ['botcs', 'mitle', 'hakta'] and (time.time() - last_cardwrite) > args.card_cooldown:
                         print('OPEN:', last_name, card_db[last_name])
-                        pirate.emulateCardID(card_db[last_name])
+                        SQLInsert(card_db[last_name])
+                        if not args.virtual:
+                            pirate.emulateCardID(card_db[last_name])
+                    
                         last_cardwrite = time.time()
-                
-                    # Wait a few secs before continuing
-	            #time.sleep(1.5)
+                        
+
             else:
                 last_name = name_counter[0][0]
                 consecutive_occurrence = 0
