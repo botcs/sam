@@ -9,19 +9,19 @@ from datetime import datetime
 do_forever = True
 while do_forever:
     try:
-        vau = gatepirate.ITKGatePirate()
+        vau = gatepirate.ITKGatePirate(pmode='serial')
         vau.listen()
     except KeyboardInterrupt as e:
         print(OKBLUE+BOLD+"Bye!"+NO)
         do_forever = False
     except Exception as e:
-        str="Exception occured at {}, restarting soon...".format(str(datetime.fromtimestamp(int(time()))))
-        print(RED+str)
+        msg_str="Exception occured at {}, restarting soon...".format(str(datetime.fromtimestamp(int(time()))))
+        print(RED+msg_str)
         print(str(e))
         print(NO)
         with open('card_log.error.log', 'a') as logfile:
-            logfile.write(str+"\n")
-            logfile.write(str(e))
+            logfile.write(msg_str+"\n")
+            logfile.write(str(e)+"\n")
         sleep(15)
 
 

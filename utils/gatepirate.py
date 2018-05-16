@@ -21,7 +21,7 @@ BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
 class ITKGatePirate():
-    def __init__(self, port='auto', baudrate=9600):
+    def __init__(self, port='auto', baudrate=9600, pmode='daemon'):
         if port == 'auto':
             self.port = glob.glob('/dev/ttyUSB*')[0]
         else:
@@ -31,12 +31,20 @@ class ITKGatePirate():
         self.valid_channels = [chr(i) for i in range(ord('A'),ord('A')+self.channel_number)]
         self.sertimeout = 0
         self.reset_command = 'R'
+        self.get_led_command = 'L'
         self.log_file_name = 'card_id_log.txt'
+        self._mode = pmode # TODO make it enum
 
-        try:
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=self.sertimeout)
-        except serial.serialutil.SerialException as e:
-            print(RED+'Error! No serial device or port is locked!'+NO)
+        if self._mode == 'serial':
+            try:
+                self.ser = serial.Serial(self.port, self.baudrate, timeout=self.sertimeout)
+            except serial.serialutil.SerialException as e:
+                print(RED+'Error! No serial device or port is locked!'+NO)
+        elif self._mode == 'daemon':
+            #TODO 
+            pass
+        else:
+            print('invalid mode')
 
         self.last_raw_data = ""
 
@@ -115,6 +123,23 @@ class ITKGatePirate():
                         print(print_str, end='')
                     elif len(raw_data) != 0:
                         print("Status: {}, raw_data={}".format(status,raw_data))
+                    try:
+                        emf = open('emulate.txt', 'r')
+                        a = emf.read().splitlines()
+                        if len(a) > 0:
+                            if len(a[0]) == 8:
+                                retv = self._emulateCardID(cardid=a[0])
+                                if retv < 0:
+                                    print("Error during emulation (cardid={cid}, ret:{ret})".format(cardid=a[0],ret=retv))
+                                else:
+                                    print("Emulated cardid: {cardid} Status: {sta} at {time}".format(cardid = a[0], sta = "OK" if retv==0 else "SHALL NOT PASS", time=str(datetime.fromtimestamp(int(t_now/1000)))))
+                            else:
+                                print("Invalid data read from emulate.txt (<{data}>)".format(data=a[0]))
+                            emf.close()
+                            with open('emulate.txt', 'w') as clear_file:
+                                pass
+                    except IOError:
+                        print("Could not read emulate.txt")
         finally:
             logfile.close()
             self.ser.close()
@@ -191,17 +216,8 @@ class ITKGatePirate():
                 if status != -1:
                     break;
         else:
-            # hope this works...
             self.ser.timeout = timeout
             raw_data = self.serial_read()
-
-            # but this works... probably
-#           tries = int((1/self.sertimeout)*timeout)
-#           while(tries>0):
-#               raw_data = self.ser.read(256);
-#               if len(raw_data) == 1+4*2:
-#                   break
-#               tries -= 1
 
             # process raw_data
             t_now = self.time_now()
@@ -212,12 +228,18 @@ class ITKGatePirate():
 
             return (cardid, t_now, channel, status)
 
+    def emulateCardID(self, cardid, channel='A'):
+        with open('/home/nvidia/card_log/emulate.txt', 'w') as emuf:
+            emuf.write(cardid)
+
     # send card id  to the server
     # accepts string of 8 hexadecimal digits, charachter of channel
     # returns access status
     # remark: only the channel 'A' is implemented in hardware yet. The controller will reject any other channel.
     #  (except 'R', which will trigger a soft reset.)
-    def emulateCardID(self, cardid, channel='A'):
+    def _emulateCardID(self, cardid, channel='A'):
+        self.empty_serial_buffer()
+
         if len(cardid) != 8:
             return -1
         if channel == self.reset_command:
@@ -234,7 +256,38 @@ class ITKGatePirate():
 
     def reset_mcu(self, wait_for_buffer_empty=True):
         if wait_for_buffer_empty:
-            time.sleep(2) # recieving buffer must be empty
-        if serial_write(self.reset_command.encode()) != 1:
+            sleep(2) # recieving buffer must be empty
+        if self.serial_write(self.reset_command.encode()) != 1:
             return -3
 
+        sleep(0.1)
+        self.empty_serial_buffer()
+
+    def get_led_state(self, wait_for_mcu_buffer_empty=True):
+        if wait_for_mcu_buffer_empty:
+            sleep(2) # recieving buffer must be empty
+
+        self.empty_serial_buffer()
+        if self.serial_write(self.get_led_command.encode()) != 1:
+            return -3
+        answer = self.serial_read(num=1, timeout=250)
+        if len(answer) != 1:
+            return -3
+        if answer == b'+':
+            return 0
+        elif answer == b'-':
+            return 1
+        else:
+            return -1
+
+
+    def empty_serial_buffer(self):
+        to = self.ser.timeout
+        self.ser.timeout = 0
+        while True:
+            buf = self.ser.read(64)
+            if len(buf) != 0:
+               print(buf)
+            else:
+               break
+        self.ser.timeout = to
