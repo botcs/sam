@@ -62,8 +62,13 @@ def getSQLcardID(shibboleth):
     
     return query_result[0]['card_ID']
 
-if __name__ == '__main__':
 
+def addbanner(img, banner):
+    img[:banner.shape[0]] = banner
+    return img
+
+
+if __name__ == '__main__':
 
     # Pre-check webcam before loading every other module
     cap = cv2.VideoCapture(0)
@@ -118,6 +123,7 @@ if __name__ == '__main__':
     aligner = AlignDlib(args.dlib, region=args.region, grayScale=args.gray)    
     tensor_converter = ToTensor()
 
+    bgrbanner = cv2.imread('banner.png')
     last_cardwrite = time.time()
     it = 0
     start_time = time.time()
@@ -130,6 +136,7 @@ if __name__ == '__main__':
         try:
             # STEP 1: READ IMAGE
             ret, bgrImg = cap.read()
+            bgrImg = cv2.flip(bgrImg, 1)
             if not ret:
                 raise RuntimeError('Video capture was unsuccessful.')
                 
@@ -149,12 +156,14 @@ if __name__ == '__main__':
                         topleft = (aligner.regionXmin, aligner.regionYmin)
                         bottomright = (aligner.regionXmax, aligner.regionYmax)
                         cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
+                        '''
                         cv2.putText(
                             bgrImg, 'Looking for a face...', 
                             (aligner.regionXmin, aligner.regionYmax+40),
                             cv2.FONT_HERSHEY_SIMPLEX,
                                 1.2, (0, 0, 200), 1, cv2.LINE_AA)
-            
+                        '''
+                    bgrImg = addbanner(bgrImg, bgrbanner)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break                
@@ -231,9 +240,13 @@ if __name__ == '__main__':
             print('consec', consecutive_occurrence, 'name', last_name)
             print('\t\t\tBENCHMARK WITH NAMES...\n')
             print('\t\t\t%20s:\t%4s:'%('name hash', 'occurrence'))
-           
+            '''
+            
             for n, c in name_counter[:3]:
                 print('\t\t\t%20s\t(%2d)'%(n.split()[-1], c))
+            print('-'*80)
+                
+            '''
             FPS = it / (time.time()-start_time)
             print('\n\n\n')
             print('\t\t\tOpening soon! Stay tuned')
@@ -258,7 +271,6 @@ if __name__ == '__main__':
     
                 else: #consecutive_occurrence + args.consecutive / 3 > args.consecutive:
                     ratio = max(args.consecutive - consecutive_occurrence, 0) / args.consecutive
-                    print(ratio)
                     color = (ratio * 200, 200, ratio * 200)
                     text = '%s %2d %%'%(name_counter[0][0].split()[-1], percentage)
                 
@@ -272,12 +284,11 @@ if __name__ == '__main__':
                 if consecutive_occurrence >= args.consecutive:
                     circle_color = (0, 200, 0) 
                     circle_thickness = 5
-                print((bb.left(), bb.top()), (bb.right(), bb.bottom()))
                 #cv2.rectangle(bgrImg, (bb.left(), bb.top()), (bb.right(), bb.bottom()), (0, 255, 0), 2)
-
                 cv2.circle(bgrImg, (x+w//2, y+h//2), w//2+radius_addition, circle_color, circle_thickness)        
 
                 
+                bgrImg = addbanner(bgrImg, bgrbanner)
                 cv2.imshow('frame', bgrImg)
                 if cv2.waitKey(10) & 0xFF == ord('q'):
                     break
