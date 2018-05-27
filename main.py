@@ -51,6 +51,17 @@ def SQLInsert(cardid, channel='A', t_now=None, status=1):
     send_query(SQL_INSERT)
 
 
+def getSQLcardID(shibboleth):
+    SQL_QUERY = '''
+        SELECT card_ID FROM user WHERE shibboleth="{shibboleth}"
+    '''.format(shibboleth=shibboleth)
+    query_result = send_query(SQL_QUERY)
+    
+    if len(query_result) == 0:
+        return None
+    
+    return query_result[0]['card_ID']
+
 if __name__ == '__main__':
 
 
@@ -172,10 +183,14 @@ if __name__ == '__main__':
 
            
             # STEP 4: COMPARE TO REGISTERED EMBEDDINGS
+            topk_start = time.time()
             distances = ((embedding_vectors-embedding128.expand_as(embedding_vectors))**2).mean(-1)
             sorted_distances, idxs = torch.sort(distances)
             sorted_distances = sorted_distances[:args.k]
             idxs = idxs[:args.k]
+            topk_time = time.time() - topk_start
+            
+            count_start = time.time()
             name_counter = {}
             for idx in idxs.data:
                 n = names[idx]
@@ -184,20 +199,22 @@ if __name__ == '__main__':
                 else:
                     name_counter[n] += 1
             name_counter = sorted(list(name_counter.items()), key=lambda x: x[1], reverse=True)[:args.k]
+            count_time = time.time() - count_start
           
  
             # STEP 5: OPEN TURNSPIKE
             # TODO: design a good policy
             if name_counter[0][0].find('<') == -1 and name_counter[0][1]/args.k *100 > args.threshold and last_name == name_counter[0][0]:
                 consecutive_occurrence += 1
-                if consecutive_occurrence >= args.consecutive:
-                    if last_name in ['botcs', 'mitle', 'hakta'] and (time.time() - last_cardwrite) > args.card_cooldown:
-                        print('OPEN:', last_name, card_db[last_name])
-                        SQLInsert(card_db[last_name])
+                if consecutive_occurrence >= args.consecutive and (time.time() - last_cardwrite) > args.card_cooldown:
+                    last_cardwrite = time.time()
+                    card_id = getSQLcardID(last_name)
+                    if card_id is not None:
+                        print('OPEN:', last_name, card_id)
+                        SQLInsert(card_id)
                         if not args.virtual:
-                            pirate.emulateCardID(card_db[last_name])
-                    
-                        last_cardwrite = time.time()
+                            pirate.emulateCardID(card_id)
+                        
                         
 
             else:
@@ -206,6 +223,11 @@ if __name__ == '__main__':
             
             # STEP 6: SHOW RESULTS
             #print('\x1b[2J')
+            '''
+            print('\tEmbedding network inference time: %1.4f sec' % inference_time)
+            print('\tTop-k time: %1.4f sec' % topk_time)
+            print('\tCount time: %1.4f sec' % count_time)
+
             print('consec', consecutive_occurrence, 'name', last_name)
             print('\t\t\tBENCHMARK WITH NAMES...\n')
             print('\t\t\t%20s:\t%4s:'%('name hash', 'occurrence'))
@@ -217,7 +239,7 @@ if __name__ == '__main__':
             print('\t\t\tOpening soon! Stay tuned')
             print('\t\t\t  Info: sam.itk.ppke.hu\n\n')
             print('\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS))
-
+            '''
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES
             if args.display:
                 (x, y, w, h) = rect_to_bb(bb)
@@ -232,7 +254,7 @@ if __name__ == '__main__':
                 #color = (200, 200, 200)
                 if percentage < args.threshold or name_counter[0][0].find('>') > -1:
                     color = (0, 0, 200)
-                    text = '<UNK>'
+                    text = '<PROCESSING...>'
     
                 else: #consecutive_occurrence + args.consecutive / 3 > args.consecutive:
                     ratio = max(args.consecutive - consecutive_occurrence, 0) / args.consecutive
