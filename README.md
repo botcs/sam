@@ -41,9 +41,9 @@ class Net(nn.Module):
 #### Training results
 | |Training set|Test set|
 ---|---|---
-\# Individuals | 467 | 41248
-\# Images | 88 | 10000
-Accuracy (top-1) | 99.6% | __99.3%__
+\# Individuals | 467 | 88 | 
+\# Images | 41248 | 10000
+Accuracy | 99.6% | __99.3%__
 
 #### Time complexity
 
