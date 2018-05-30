@@ -68,6 +68,33 @@ def addbanner(img, banner):
     return img
 
 
+def smartbanner(img, nameCount=None):
+
+
+    H, W, C = img.shape
+    H = 50
+    cv2.rectangle(img,(0,0),(W,H),(255,255,255),-1)
+    
+    if nameCount is not None:    
+        for i, (n, c) in enumerate(name_counter[:3]):
+            text = '%s (%2d)'%(n, c)
+            
+            cv2.putText(bgrImg, text, (30 + i*150, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=0.5, color=(0,0,0), 
+                thickness=1, lineType=cv2.LINE_AA)
+
+    else:
+        text = 'No IDs to show...'
+        cv2.putText(bgrImg, text, (30, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.5, color=(0,0,0), 
+                    thickness=1, lineType=cv2.LINE_AA)
+        
+                
+    return img
+
+
 if __name__ == '__main__':
 
     # Pre-check webcam before loading every other module
@@ -163,7 +190,7 @@ if __name__ == '__main__':
                             cv2.FONT_HERSHEY_SIMPLEX,
                                 1.2, (0, 0, 200), 1, cv2.LINE_AA)
                         '''
-                    bgrImg = addbanner(bgrImg, bgrbanner)
+                    bgrImg = smartbanner(bgrImg)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break                
@@ -267,7 +294,7 @@ if __name__ == '__main__':
                 #color = (200, 200, 200)
                 if percentage < args.threshold or name_counter[0][0].find('>') > -1:
                     color = (0, 0, 200)
-                    text = '<PROCESSING...>'
+                    text = '<UNK>'
     
                 else: #consecutive_occurrence + args.consecutive / 3 > args.consecutive:
                     ratio = max(args.consecutive - consecutive_occurrence, 0) / args.consecutive
@@ -288,7 +315,7 @@ if __name__ == '__main__':
                 cv2.circle(bgrImg, (x+w//2, y+h//2), w//2+radius_addition, circle_color, circle_thickness)        
 
                 
-                bgrImg = addbanner(bgrImg, bgrbanner)
+                bgrImg = smartbanner(bgrImg, name_counter)
                 cv2.imshow('frame', bgrImg)
                 if cv2.waitKey(10) & 0xFF == ord('q'):
                     break
