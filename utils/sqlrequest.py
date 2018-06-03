@@ -24,6 +24,7 @@ def send_query(query, verbose=True):
     cursor = db.cursor()
     cursor.execute(query)
     data = cursor.fetchall()
+    db.commit()
     db.close()
     end = time.time()
 
