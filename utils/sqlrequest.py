@@ -21,21 +21,23 @@ def send_query(query, verbose=True):
         print('QUERY = """\n', query, '\n"""')
         
     db = pymysql.connect(host,user,password,database)
-    cursor = db.cursor()
-    cursor.execute(query)
-    data = cursor.fetchall()
-    db.commit()
-    db.close()
+    try:
+        with pymysql.cursors.DictCursor(db) as cursor:
+            cursor.execute(query)
+            db.commit()
+            result = cursor.fetchall()
+    finally:
+        db.close()
     end = time.time()
 
     if verbose:
         time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.gmtime(end))
         
         print('REQUEST SUCCESS!')
-        print('Length of result:', len(data))
+        print('Length of result:', len(result))
     
     print('Query took %3.2f sec' % (end-start))
-    return data
+    return result
 
 def send_large_query(query, batch_size=100000, verbose=True): 
     counter_SQL = re.sub(r'SELECT (.*) FROM', 'SELECT count(*) FROM', query) 
