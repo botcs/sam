@@ -45,9 +45,9 @@ def SQLInsert(cardid, channel='A', t_now=None, status=1):
         t_now = int(time.time()*1000)
         
     SQL_INSERT = '''
-        INSERT INTO card_write_log(card_ID, timestamp, gate, success)
-        VALUES('{card_ID}', {timestamp}, '{gate}', {success})
-    '''.format(card_ID=cardid, timestamp=t_now, gate=channel, success=status)
+        INSERT INTO card_write_log(card_ID, timestamp, gate, status)
+        VALUES('{card_ID}', {timestamp}, '{gate}', {status})
+    '''.format(card_ID=cardid, timestamp=t_now, gate=channel, status=status)
     send_query(SQL_INSERT)
 
 

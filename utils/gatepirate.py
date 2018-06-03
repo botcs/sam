@@ -91,9 +91,9 @@ class ITKGatePirate():
 
     def SQLInsert(self, cardid, channel, t_now, status):
         SQL_INSERT = """
-            INSERT INTO card_log(card_ID, timestamp, gate, success)
-            VALUES("{card_ID}", {timestamp}, "{gate}", {success})
-        """.format(card_ID=cardid, timestamp=t_now, gate=channel, success=status)
+            INSERT INTO card_log(card_ID, timestamp, gate, status)
+            VALUES("{card_ID}", {timestamp}, "{gate}", {status})
+        """.format(card_ID=cardid, timestamp=t_now, gate=channel, status=status)
         send_query(SQL_INSERT)
 
 
