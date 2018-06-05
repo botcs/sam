@@ -13,41 +13,41 @@ with open('/home/csbotos/sam/utils/db.conf') as f:
     password = f.readline().strip()
     database = f.readline().strip()
     
-def send_query(query, verbose=True):
+def db_query(query,args=None,as_dict=True,verbose=True):
     start = time.time()
     if verbose:
         time_str = datetime.fromtimestamp(start).strftime('%m/%d/%Y %H:%M:%S')
         print('QUERY SENT - ', time_str)
         print('QUERY = """\n', query, '\n"""')
         
-    db = pymysql.connect(host,user,password,database)
+    connection = pymysql.connect(host,user,password,database,charset='utf8mb4',
+                   cursorclass=pymysql.cursors.DictCursor if as_dict else pymysql.cursors.Cursor)
     try:
-        with pymysql.cursors.DictCursor(db) as cursor:
-            cursor.execute(query)
-            db.commit()
-            result = cursor.fetchall()
+        with connection.cursor() as cursor:
+            if args:
+                assert type(args) in [tuple, list], 'parameter "args" must be tuple or list'
+                if type(args[0]) in [tuple, list, dict]:
+                    cursor.executemany(query,args)
+                else:
+                    cursor.execute(query,args)
+            else:
+                cursor.execute(query)
+                
+            if query.strip().lower().startswith('select'):
+                result = cursor.fetchall()
+            else:
+                connection.commit()
+                result = None
     finally:
-        db.close()
+        connection.close()
     end = time.time()
 
     if verbose:
         time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.gmtime(end))
         
         print('REQUEST SUCCESS!')
-        print('Length of result:', len(result))
+        if result:
+            print('Length of result:', len(result))
     
     print('Query took %3.2f sec' % (end-start))
-    return result
-
-def send_large_query(query, batch_size=100000, verbose=True): 
-    counter_SQL = re.sub(r'SELECT (.*) FROM', 'SELECT count(*) FROM', query) 
-    result_length = int(send_query(counter_SQL)[0]['count(*)']) 
-    print("Expected length of result:", result_length)
-    result = [] 
-    for i in range(0, result_length, batch_size): 
-        result += send_query(query + " LIMIT {}, {}".format(i, batch_size), verbose)
-        if verbose:
-            print("Recieved chunk: {} - {}".format(
-                i, i+batch_size if i+batch_size < result_length else result_length)) 
-    
     return result
