@@ -16,6 +16,8 @@ from utils import AlignDlib
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--list', required=True, help='Path to BUFFER directory')
+parser.add_argument('--recheck', type=int, default=9999999,
+                    help='Time interval (in seconds) between finishing and starting a next sweep')
 parser.add_argument('--workers', type=int, default=1,
                     help='Number of parallel workers')
 parser.add_argument('--size', type=int, default=96,
@@ -48,14 +50,6 @@ def mkdirMaybe(dirname):
         os.makedirs(dirname)
         
 
-def parallelWrapper(arg):
-    global checklist
-    try:
-        procImg(arg)
-    except KeyboardInterrupt:
-        pass
-
-
 def procImg(arg):
     idx, img_path = arg
     bgrImg = cv2.imread(img_path)
@@ -69,15 +63,7 @@ def procImg(arg):
         return
     
     rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
-    shrink_ratio = 2/3
-    h = rgbImg.shape[0]
-    w = rgbImg.shape[1]
-    #offset
-    osh = int(h * shrink_ratio / 2)
-    osw = int(w * shrink_ratio / 2)
-    bb = dlib.rectangle(0+osw, 0+osh, rgbImg.shape[1]-osw, rgbImg.shape[0]-osh)#.getLargestFaceBoundingBox(rgbImg, dlib_upsample=1)
-    landmarks = aligner.findLandmarks(rgbImg, bb=bb)
-    aligned_img = aligner.align(args.size, rgbImg, landmarks=landmarks)
+    aligned_img = aligner.align(96, rgbImg)
     
     if aligned_img is None:
 
@@ -101,23 +87,16 @@ def procImg(arg):
     print('[%6d / %6d] Extracted to: %30s' % (idx, total_imgs, target_path))
 
 if __name__ == '__main__':
-    img_paths = open(args.list).read().splitlines()
-    worker_args = [(i, path) for (i, path) in enumerate(img_paths) if not isProcessed(path)]
-    total_imgs = len(worker_args)
-    #TODO: Do send - recv between threads to count
-    checklist = [False for _ in range(total_imgs)]
-    print('Found %7d files in total' % total_imgs)
-    p = Pool(args.workers)
-    start_time = time.time()
-    try:
-        p.map(parallelWrapper, worker_args)
+    print(args, flush=True)
+    while args.recheck > 0:
+        img_paths = open(args.list).read().splitlines()
+        worker_args = [(i, path) for (i, path) in enumerate(img_paths) if not isProcessed(path)]
+        total_imgs = len(worker_args)
+        print('Found %7d files in total' % total_imgs)
+        p = Pool(args.workers)
+        start_time = time.time()
+        p.map(procImg, worker_args)
         total_time = time.time() - start_time
-        FPS = total_imgs / total_time
-        print('Finished Aligning %d images in %d sec, FPS=%3.2f' % (total_imgs, total_time, FPS))
-    except KeyboardInterrupt:
-        print('\n\nInterrupted manually, terminating workers...\n\n')
-        total_time = time.time() - start_time
-        completed_imgs = sum(checklist)
-        FPS = completed_imgs / total_time
-        print('Finished Aligning %d images in %d sec, FPS=%3.2f' % (completed_imgs, total_time, FPS))
- 
+        FPS = len(img_paths) / total_time
+        print('Finished Aligning %d images in %d sec, FPS=%3.2f, waiting %d sec before next sweep' % (len(img_paths), total_time, FPS, args.recheck))
+        time.sleep(args.recheck)

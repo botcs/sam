@@ -1,13 +1,18 @@
-from urllib import request, parse
-import json
+import socket
+assert socket.gethostname() in ['k80','tegra-ubuntu','users'], \
+    Exception('mySQL database can only be reached from k80, users or tegra')
+
+import pymysql
 import time
 import re
 from datetime import datetime
-import sys
 
-with open('/home/csbotos/sam/utils/db-password') as dbpf:
-    dbp = dbpf.readline()
-
+with open('/home/csbotos/sam/utils/db.conf') as f:
+    host = f.readline().strip()
+    user = f.readline().strip()
+    password = f.readline().strip()
+    database = f.readline().strip()
+    
 def send_query(query, verbose=True):
     start = time.time()
     if verbose:
@@ -15,20 +20,24 @@ def send_query(query, verbose=True):
         print('QUERY SENT - ', time_str)
         print('QUERY = """\n', query, '\n"""')
         
-    post_data = {'password': dbp, 
-                 'query': query.replace('\n', ' ') }
-    data = parse.urlencode(post_data).encode()
-    req =  request.Request("https://users.itk.ppke.hu/~hakta/belepteto/db.php", data=data)
-    resp = request.urlopen(req)
-    response = json.loads(resp.read().decode())
+    db = pymysql.connect(host,user,password,database)
+    try:
+        with pymysql.cursors.DictCursor(db) as cursor:
+            cursor.execute(query)
+            db.commit()
+            result = cursor.fetchall()
+    finally:
+        db.close()
     end = time.time()
-    
-    assert response['success'], response['answer']
+
     if verbose:
-        print('Length of result:', len(response['answer']))
+        time_str = time.strftime('%m/%d/%Y %H:%M:%S', time.gmtime(end))
+        
+        print('REQUEST SUCCESS!')
+        print('Length of result:', len(result))
     
-    print('Succesful query! took %3.2f sec' % (end-start))
-    return response['answer']
+    print('Query took %3.2f sec' % (end-start))
+    return result
 
 def send_large_query(query, batch_size=100000, verbose=True): 
     counter_SQL = re.sub(r'SELECT (.*) FROM', 'SELECT count(*) FROM', query) 
