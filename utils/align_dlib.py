@@ -18,6 +18,8 @@ import cv2
 import dlib
 import numpy as np
 
+import os
+from urllib.request import urlretrieve
 
 TEMPLATE = np.float32([
     (0.0792396913815, 0.339223741112), (0.0829219487236, 0.456955367943),
@@ -74,6 +76,27 @@ def rect_to_bb(rect, ratio=1):
     # return a tuple of (x, y, w, h)
     return x, y, w, h
 
+class DeepFaceDetector:
+    def __init__(self, path=None):
+        defaultPath = '/tmp/mmod_human_face_detector.dat'
+        downloadURL = 'http://users.itk.ppke.hu/~botcs/mmod_human_face_detector.dat'
+        
+        if path is None:
+            print('DNN Face detector path not provided, looking at default path: "%s"' % defaultPath)
+            if not os.path.exists(defaultPath):
+                print('Downloading DNN Face detector weights from "%s" to "%s"'%(downloadURL, defaultPath))
+                urlretrieve(downloadURL, defaultPath)
+            
+            path = defaultPath
+        print('Loading DNN Face detector weights...')
+        self.detector = dlib.cnn_face_detection_model_v1(path)
+        
+        
+    def __call__(self, *args, **kwargs):
+        mmod_rectangles = self.detector(*args, **kwargs)
+        return dlib.rectangles([r.rect for r in mmod_rectangles])
+    
+
 class AlignDlib:
     """
     Use `dlib's landmark estimation <http://blog.dlib.net/2014/08/real-time-face-pose-estimation.html>`_ to align faces.
@@ -92,7 +115,7 @@ class AlignDlib:
     INNER_EYES_AND_BOTTOM_LIP = [39, 42, 57]
     OUTER_EYES_AND_NOSE = [36, 45, 33]
 
-    def __init__(self, facePredictor, region=None, grayScale=False):
+    def __init__(self, facePredictor=None, region=None, grayScale=False, DNN=False):
         """
         Instantiate an 'AlignDlib' object.
 
@@ -101,13 +124,17 @@ class AlignDlib:
         """
         assert facePredictor is not None
 
-        self.detector = dlib.get_frontal_face_detector()
+        if DNN:
+            self.detector = DeepFaceDetector()
+        else:
+            self.detector = dlib.get_frontal_face_detector()
+        
         self.predictor = dlib.shape_predictor(facePredictor)
+        
         self.grayScale = grayScale
 
-        if region:
-            self.region = region            
-
+        self.region = region
+        if region is not None:
             self.regionXmin = region[0]
             self.regionYmin = region[1]
             self.regionXmax = self.regionXmin + region[2]
@@ -147,14 +174,23 @@ class AlignDlib:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         try:
-            if self.detectRegion:
+            if self.region is not None:
                 return self.detectRegion(img)
             return self.detector(img)
+
         except Exception as e:
             print("Warning: {}".format(e))
             # In rare cases, exceptions are thrown with random memory failures...
             # Who cares?!
             return []
+
+            
+    def extractLargestBoundingBox(self, bbs):
+        if bbs is None or len(bbs) == 0:
+            return None
+            
+        return max(bbs, key=lambda rect: rect.width() * rect.height())
+
 
     def getLargestFaceBoundingBox(self, rgbImg, skipMulti=False, **kwargs):
         """
@@ -192,6 +228,25 @@ class AlignDlib:
         points = self.predictor(rgbImg, bb)
         return list(map(lambda p: (p.x, p.y), points.parts()))
 
+
+    def cropThumbnail(self, img, bb, paddingRatio=0.35):
+        xmin = bb.left()
+        ymin = bb.top()
+        xmax = bb.right()
+        ymax = bb.bottom()
+        
+        H, W, C = img.shape
+        bbH = xmax - xmin
+        bbW = ymax - ymin
+        
+        xminPadded = max(0, xmin - int(bbW * paddingRatio))
+        yminPadded = max(0, ymin - int(bbH * paddingRatio))
+        xmaxPadded = min(W, xmax + int(bbW * paddingRatio))
+        ymaxPadded = min(H, ymax + int(bbH * paddingRatio))
+        
+        return img[yminPadded:ymaxPadded, xminPadded:xmaxPadded]
+    
+
     def align(self, imgDim, rgbImg, bb=None,
               landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP,
               skipMulti=False, ratio=1):
@@ -225,7 +280,6 @@ class AlignDlib:
             if bb is None:
                 return
 
-        #bb = dlib.rectangle(bb.)
 
         if landmarks is None:
             landmarks = self.findLandmarks(rgbImg, bb)

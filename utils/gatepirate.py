@@ -8,9 +8,13 @@ from datetime import datetime
 import binascii
 import glob
 
-sys.path.insert(0, '/home/nvidia/sam/')
-from utils import send_query
+import os
 
+from .sqlrequest import db_query
+
+#base_dir = '/home/nvidia/card_log/'
+#base_dir = '/home/levi/kibu/card/'
+base_dir = '/tmp/'
 
 OKBLUE = '\033[94m'
 GREEN = '\033[92m'
@@ -23,9 +27,11 @@ UNDERLINE = '\033[4m'
 class ITKGatePirate():
     def __init__(self, port='auto', baudrate=9600, pmode='daemon'):
         if port == 'auto':
-            self.port = glob.glob('/dev/ttyUSB*')[0]
+            #self.port = glob.glob('/dev/ttyUSB*')[0]
+            self.port = glob.glob('/dev/ttyACM*')[0]
         else:
             self.port = port
+
         self.baudrate = baudrate
         self.channel_number = 1
         self.valid_channels = [chr(i) for i in range(ord('A'),ord('A')+self.channel_number)]
@@ -33,7 +39,7 @@ class ITKGatePirate():
         self.reset_command = 'R'
         self.get_led_command = 'L'
         self.log_file_name = 'card_id_log.txt'
-        self._mode = pmode # TODO make it enum
+        self._mode = pmode
 
         if self._mode == 'serial':
             try:
@@ -45,6 +51,11 @@ class ITKGatePirate():
             pass
         else:
             print('invalid mode')
+            
+        with open(os.path.join(base_dir, 'emulate.txt'), 'w') as crf:
+            pass
+        with open(os.path.join(base_dir, 'last.txt'), 'w') as crf:
+            pass
 
         self.last_raw_data = ""
 
@@ -67,15 +78,6 @@ class ITKGatePirate():
         self.ser.timeout = to
         return raw_data
 
-    def serial_read_old(self):
-        raw_data = []
-        try:
-            raw_data = self.ser.read(256);
-        except serial.serialutil.SerialException as e:
-            print(RED+'Serial read error'+NO)
-
-        return raw_data
-
     def serial_write(self, tx_data):
         byte_count = 0
         try:
@@ -88,13 +90,13 @@ class ITKGatePirate():
     def time_now(self):
          t = int(time()*1000)
          return t
-
+         
     def SQLInsert(self, cardid, channel, t_now, status):
         SQL_INSERT = """
-            INSERT INTO card_log(card_ID, timestamp, gate, success)
-            VALUES("{card_ID}", {timestamp}, "{gate}", {success})
-        """.format(card_ID=cardid, timestamp=t_now, gate=channel, success=status)
-        send_query(SQL_INSERT)
+            INSERT INTO card_read_log(card_ID, timestamp, gate)
+            VALUES("{card_ID}", {timestamp}, "{gate}")
+        """.format(card_ID=cardid, timestamp=t_now, gate=channel, status=status)
+        db_query(SQL_INSERT)
 
 
     def listen(self):
@@ -103,11 +105,12 @@ class ITKGatePirate():
             me = singleton.SingleInstance( flavor_id="listener" ) # will sys.exit(-1) if other instance is running
         except singleton.SingleInstanceException as e:
             sys.exit(-1)
+            
         print(OKBLUE+"CardID listener started at {}".format(strftime("%c"))+NO)
         try:
             with open(self.log_file_name, 'a') as logfile:
                 while True:
-                    raw_data = self.serial_read()
+                    raw_data = self.serial_read(num=9)
                     (cardid, channel, status) = self.process_raw_data(raw_data)
                     t_now = self.time_now()
                     if status == 0 or status == 1:
@@ -116,27 +119,27 @@ class ITKGatePirate():
                         logfile.flush()
                         try:
                             self.SQLInsert(cardid=cardid, channel=channel, t_now=t_now, status=status)
-                        except RuntimeError as e:
+                        except (Exception) as e:
                             print(e)
+
+                        with open(os.path.join(base_dir, 'last.txt'), 'w') as out:
+                            out.write(file_str)
                         status_str = "OK" if status==0 else "SHALL NOT PASS"
                         print_str = "0x{id} {status} on channel {ch} at {tim}\r\n".format(id=cardid, ch=channel, status=status_str, tim=str(datetime.fromtimestamp(int(t_now/1000))))
                         print(print_str, end='')
                     elif len(raw_data) != 0:
                         print("Status: {}, raw_data={}".format(status,raw_data))
                     try:
-                        emf = open('emulate.txt', 'r')
+                        emf = open(os.path.join(base_dir, 'emulate.txt'), 'r')
                         a = emf.read().splitlines()
                         if len(a) > 0:
                             if len(a[0]) == 8:
-                                retv = self._emulateCardID(cardid=a[0])
-                                if retv < 0:
-                                    print("Error during emulation (cardid={cid}, ret:{ret})".format(cardid=a[0],ret=retv))
-                                else:
-                                    print("Emulated cardid: {cardid} Status: {sta} at {time}".format(cardid = a[0], sta = "OK" if retv==0 else "SHALL NOT PASS", time=str(datetime.fromtimestamp(int(t_now/1000)))))
+                                #retv = self._emulateCardID(cardid=a[0])
+                                self._force_open()
                             else:
                                 print("Invalid data read from emulate.txt (<{data}>)".format(data=a[0]))
                             emf.close()
-                            with open('emulate.txt', 'w') as clear_file:
+                            with open(os.path.join(base_dir, 'emulate.txt'), 'w') as clear_file:
                                 pass
                     except IOError:
                         print("Could not read emulate.txt")
@@ -148,15 +151,15 @@ class ITKGatePirate():
         channel = chr(cardid_str[0])
         cardid = cardid_str[1:9]
         #status_chr = chr(cardid_str[9])
-        if channel in self.valid_channels:
-            status = self.process_entry_status(cardid_str[9:10])
-        else:
-            status = None
+        #if channel in self.valid_channels:
+        #    status = self.process_entry_status(cardid_str[9:10])
+        #else:
+        #    status = None
 
-        return (cardid, channel, status)
+        return (cardid, channel, 0)
 
     def process_raw_data(self, raw_data):
-        card_id_len = 1+4*2+1 # channel id + 32byte ascii cardID + 1 char status
+        card_id_len = 1+4*2 # channel id + 32byte ascii cardID + 1 char status
         if len(raw_data) == card_id_len:
             (cardid, channel, status) = self.process_raw_cardid_input(raw_data)
         elif len(raw_data) == 0:
@@ -179,6 +182,12 @@ class ITKGatePirate():
         self.last_raw_data = raw_data
         if cardid is not None:
             cardid = cardid.decode('ascii')
+            
+        if channel == 'W' or channel == 'i':
+            cardid = None
+            channel = None
+            status = -2
+            
         return (cardid, channel, status)
 
 
@@ -200,14 +209,8 @@ class ITKGatePirate():
 
         return status
 
-    def read_entry_status(self):
-        raw_data = self.serial_read(num=1, timeout=1000)
-        status = self.process_entry_status(raw_data)
-        return status
-
-
     # timeout in seconds
-    def readOneCardID(self, timeout=None):
+    def _readOneCardID(self, timeout=None):
         if timeout is None:
             while True:
                 raw_data = self.serial_read()
@@ -229,8 +232,20 @@ class ITKGatePirate():
             return (cardid, t_now, channel, status)
 
     def emulateCardID(self, cardid, channel='A'):
-        with open('/home/nvidia/card_log/emulate.txt', 'w') as emuf:
+        with open(os.path.join(base_dir, 'emulate.txt'), 'w') as emuf:
             emuf.write(cardid)
+
+        
+    def readCardID(self, max_age=None):
+        with open(os.path.join(base_dir, 'last.txt'),'r') as last_card:
+            x = last_card.read().split(',')
+        with open(os.path.join(base_dir, 'last.txt'),'w') as last_card:
+            pass
+        if max_age is not None and 2 < len(x):
+            if (self.time_now() - int(x[2])) > max_age:
+                return []
+                
+        return x
 
     # send card id  to the server
     # accepts string of 8 hexadecimal digits, charachter of channel
@@ -250,8 +265,8 @@ class ITKGatePirate():
             return -4
 
         # wait for led access status
-        status = self.read_entry_status()
-        return (status)
+        #tatus = self.read_entry_status()
+        return (0)
 
 
     def reset_mcu(self, wait_for_buffer_empty=True):
@@ -262,23 +277,6 @@ class ITKGatePirate():
 
         sleep(0.1)
         self.empty_serial_buffer()
-
-    def get_led_state(self, wait_for_mcu_buffer_empty=True):
-        if wait_for_mcu_buffer_empty:
-            sleep(2) # recieving buffer must be empty
-
-        self.empty_serial_buffer()
-        if self.serial_write(self.get_led_command.encode()) != 1:
-            return -3
-        answer = self.serial_read(num=1, timeout=250)
-        if len(answer) != 1:
-            return -3
-        if answer == b'+':
-            return 0
-        elif answer == b'-':
-            return 1
-        else:
-            return -1
 
 
     def empty_serial_buffer(self):
@@ -291,3 +289,22 @@ class ITKGatePirate():
             else:
                break
         self.ser.timeout = to
+        
+
+
+    def _force_open(self):
+        if self.serial_write(b'O') != 1:
+            return -3
+        sleep(0.1)
+        self.empty_serial_buffer()
+        return 0
+
+    def _clear_status(self):
+        if self.serial_write(b'C') != 1:
+            return -3
+        sleep(0.1)
+        self.empty_serial_buffer()
+        return 0
+
+
+
