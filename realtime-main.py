@@ -104,11 +104,6 @@ if __name__ == '__main__':
         
     AUTHORIZED_ID = None
     
-    open('distance-diff.txt', 'w')
-    
-    FullFrameSaver = AsyncSaver(camID=0, rootPath='realtime-recordings/fullframe/')
-    ThumbnailSaver = AsyncSaver(camID=0, rootPath='realtime-recordings/thumbnail/')
-
     if args.display:
         cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         if args.fullscreen:
@@ -311,7 +306,7 @@ if __name__ == '__main__':
             # STEP 8:
             # TODO: Async update of CARD2NAME
             if it % 50 == 0:
-                CARD2NAME = getCard2NameSQL()
+                CARD2NAME = getCard2Name()
  
 
         except KeyboardInterrupt:
