@@ -14,9 +14,12 @@ import pathlib
 # torch - for neural network and GPU accelerated processes
 # cv2 - for capturing web-cam and displaying the live stream
 # numpy - for general matrix manipulation of cv2 image arrays
+import numpy as np
+import dlib
+#DLIB_CNN = dlib.cnn_face_detection_model_v1('/tmp/mmod_human_face_detector.dat')
+#print(DLIB_CNN(np.zeros([480, 640, 3], dtype='uint8')))
 import torch
 import cv2
-import numpy as np
 
 ## pytorch utility functions
 # FloatTensor - is set as the default Tensor type when recasting, easy to switch to half-precision
@@ -32,7 +35,9 @@ from torchvision.transforms import ToTensor
 # AlignDlib - Preprocess steps before the face-recognition network. E.g. cropping and rotating faces
 # db_query - interface to MySQL server
 # ITKGatePirate - interface for communication with specific Wiegand card reader hardware
-# AsyncSaver - implements continuous frame saving without waiting for the file to be closed
+# drawBBox, drawBanner - display decorators
+# getCard2Name - connets CardID to userID for display
+# initDB - initialize the MySQL Database
 
 import utils
 from utils import prepareOpenFace
@@ -40,7 +45,6 @@ from utils import AlignDlib
 from utils import rect_to_bb
 from utils import db_query
 from utils import ITKGatePirate
-from utils import AsyncSaver
 from utils import drawBBox, drawBanner
 from utils import Tracer
 from utils import getCard2Name, initDB
@@ -92,12 +96,6 @@ if __name__ == '__main__':
     
     initDB('/home/botoscs/sam/utils/db.conf')
 
-    #TRACER PARAMETERS INIT
-    LAST_XMIN = None
-    BBOX_DISTANCES = [0]
-    CACHED_EMBEDDINGS = Tensor(0, 128)
-    CACHED_FULLFRAMES = []
-    CACHED_BOUNDING_BOXES = []
     
     KNOWN_DB = {'emb':Tensor(0, 128), 'id':[]}
     CARD2NAME = getCard2Name()
@@ -134,7 +132,7 @@ if __name__ == '__main__':
     if use_cuda:
         torch.backends.cudnn.benchmark = True
         print('CUDA is available, uploading parameters to device...')
-
+        
         net.cuda()
         print('Neural Network OK')
 
@@ -149,7 +147,7 @@ if __name__ == '__main__':
     
     
     # tracer handles online training and ID assignment
-    tracer = Tracer(x_displacement_treshold=100)
+    tracer = Tracer(x_displacement_treshold=100, SQLBufferSize=5)
     
     # tensor converter takes a numpy array and returns a normalized Torch Tensor 
     tensor_converter = ToTensor()
@@ -162,8 +160,11 @@ if __name__ == '__main__':
     RECOGNIZED_ID = None
     consecutive_occurrence = 0
     print('Begin capture')
+    torch.no_grad().__enter__()
     while True:
         it += 1
+        tracer.flush()           
+
         try:
             # STEP 1: READ IMAGE
             ret, bgrImg = cap.read()
@@ -192,20 +193,12 @@ if __name__ == '__main__':
                     bgrImg = drawBanner(bgrImg)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
-                        break                
+                        break     
+                        
                 continue
                 
             idle_begin = -1
-            
-            
-            # STEP 1.5 SAVE / UPLOAD IMAGE
-            thumbnail = aligner.cropThumbnail(bgrImg, MAIN_BBOX)
-            FullFrameSaver.save(bgrImg, MAIN_BBOX)
-            ThumbnailSaver.save(thumbnail, MAIN_BBOX)
-
-            CACHED_FULLFRAMES.append(bgrImg.copy())
-            CACHED_BOUNDING_BOXES.append((MAIN_BBOX.left(), MAIN_BBOX.top(), MAIN_BBOX.right(), MAIN_BBOX.bottom()))
-            
+          
 
             # STEP 2: PREPROCESS IMAGE
             rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
@@ -274,27 +267,32 @@ if __name__ == '__main__':
                 RECOGNIZED_ID = id_counter[0][0]
                 consecutive_occurrence = 0
             
-            # STEP 6: SHOW RESULTS
-            #print('\x1b[2J')
-            '''
-            print('\tEmbedding network inference time: %1.4f sec' % inference_time)
-            print('\tTop-k time: %1.4f sec' % topk_time)
-            print('\tCount time: %1.4f sec' % count_time)
-
-            print('consec', consecutive_occurrence, 'name', RECOGNIZED_ID)
-            print('\t\t\tBENCHMARK WITH NAMES...\n')
-            print('\t\t\t%20s:\t%4s:'%('name hash', 'occurrence'))
-            
-            for n, c in id_counter[:3]:
-                print('\t\t\t%20s\t(%2d)'%(n.split()[-1], c))
-            print('-'*80)
                 
+            # STEP 6: (RETARDED-)SMART TRACKING:
+            AUTHORIZED_ID, KNOWN_DB = tracer.track(
+                bgrImg=bgrImg.copy(), 
+                mainBB=MAIN_BBOX, 
+                embedding128=embedding128, 
+                AUTHORIZED_ID=AUTHORIZED_ID, 
+                KNOWN_DB=KNOWN_DB, 
+                virtual=args.virtual)
+
+            if not args.virtual:        
+                CardData = pirate.readCardID(max_age=1000)
+            if AUTHORIZED_ID is None:
+                # HERE COMES THE CARD ID
+                if args.virtual:
+                    # USE KEY PRESS AS AUTHORIZATION, ID WILL BE THE CHARACTER PRESSED
+                    pressedKeyCode = cv2.waitKey(10)
+                    if pressedKeyCode != -1:
+                        AUTHORIZED_ID = chr(pressedKeyCode & 255)
+                else:
+                    if len(CardData) == 4:
+                        AUTHORIZED_ID = CardData[0]
+            
             FPS = it / (time.time()-start_time)
-            print('\n\n\n')
-            print('\t\t\tOpening soon! Stay tuned')
-            print('\t\t\t  Info: sam.itk.ppke.hu\n\n')
-            print('\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS))
-            '''
+            #print('\r\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS), end='')
+            
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES
             if args.display:
                 
@@ -310,35 +308,10 @@ if __name__ == '__main__':
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
               
-                
-            # STEP 8: (RETARDED-)SMART TRACKING:
-            AUTHORIZED_ID, KNOWN_DB = tracer.track(
-                bgrImg=bgrImg, 
-                mainBB=MAIN_BBOX, 
-                embedding128=embedding128, 
-                AUTHORIZED_ID=AUTHORIZED_ID, 
-                KNOWN_DB=KNOWN_DB, 
-                virtual=args.virtual)
-
-            if not args.virtual:        
-                CardData = pirate.readCardID(max_age=1000)
-            if AUTHORIZED_ID is None:
-                # HERE COMES THE CARD ID
-                if args.virtual:
-                    # USE KEY PRESS AS AUTHORIZATION, ID WILL BE THE CHARACTER PRESSED
-                    pressedKeyCode = cv2.waitKey(1)
-                    if pressedKeyCode != -1:
-                        AUTHORIZED_ID = chr(pressedKeyCode & 255)
-                else:
-                    if len(CardData) == 4:
-                        AUTHORIZED_ID = CardData[0]
-            
-            FPS = it / (time.time()-start_time)
-            #print('\r\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS), end='')
-            
-            # STEP 9:
-            #if it % 50 == 0:
-            #    CARD2NAME = getCard2NameSQL()
+            # STEP 8:
+            # TODO: Async update of CARD2NAME
+            if it % 50 == 0:
+                CARD2NAME = getCard2NameSQL()
  
 
         except KeyboardInterrupt:

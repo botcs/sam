@@ -4,137 +4,130 @@ import cv2
 import numpy as np
 import threading
 import time
+from PIL import Image
+from io import BytesIO
 
 with open('/home/botoscs/sam/utils/db.conf','r') as f:
     host = f.readline().strip()
     user = f.readline().strip()
     password = f.readline().strip()
     database = f.readline().strip()
-    
+
 class AsyncSQLUploader:
     def __init__(self, bufferSize=20):
         self.bufferSize = bufferSize
         self.emptyBuffer()
         self.locked = False
-        threading.Thread(target=self.flushCheck).start()
+        self.discardNum = 1
+
+        self.lastFlushTime = -1
 
     def emptyBuffer(self):
-        self.photos = []
-        self.thumbnails = []
         self.timestamps = []
+        self.full_frames = []
+        self.BBs = []
         self.card_IDs = []
-        self.xmins = []
-        self.ymins = []
-        self.xmaxs = []
-        self.ymaxs = []
         self.discardCounter = 0
 
-        
-    def numpy2bytes(self,img):
-        if img.shape[0] == 0 or img.shape[1] == 0:
-            return False
-        return cv2.imencode('.jpg', img)[1].tobytes()
-        
+    def numpy2bytes(self,bgrImg):
+        img = Image.fromarray(bgrImg[:,:,::-1])
+        output = BytesIO()
+        #img.save(output, format='JPEG', quality=85, progressive=True, optimize=True)
+        img.save(output, format='JPEG', quality=80, progressive=False, optimize=False)
+        contentJPG = output.getvalue()
+        #print('JPG:', len(contentJPG))
+        output.close()
+        return contentJPG
+        #return cv2.imencode('.jpg', img)[1].tobytes()
+
     def add_single(self,photo,timestamp,card_ID,BB):
         self.discardCounter += 1
-        if self.discardCounter < 3:
+        if self.discardCounter < self.discardNum:
             return
         self.discardCounter = 0
-        assert type(photo) is np.ndarray, "type of photo must be numpy.ndarray"
-        assert type(timestamp) is float, "type of timestamp must be float"
-        assert type(card_ID) is str, "type of card_ID must be string"
-        assert type(BB) is tuple, "Bounding Boxes are (xmin, ymin, xmax, ymax) touples"
-        xmin,ymin,xmax,ymax = BB
-        assert type(xmin) is int, "type of xmin must be int"
-        assert type(ymin) is int, "type of ymin must be int"
-        assert type(xmax) is int, "type of xmax must be int"
-        assert type(ymax) is int, "type of ymax must be int"
-        
-        self.photos.append(self.numpy2bytes(photo))
-        self.thumbnails.append(self.numpy2bytes(photo[ymin:ymax,xmin:xmax]))
         self.timestamps.append(int(timestamp*1000))
+        self.full_frames.append(photo)
         self.card_IDs.append(card_ID)
-        self.xmins.append(xmin)
-        self.ymins.append(ymin)
-        self.xmaxs.append(xmax)
-        self.ymaxs.append(ymax)
-        
-        #if len(self.photos) > self.bufferSize:
-            #self.flush()
-            #if not self.locked:
-            #    self.locked = True
-            #    threading.Thread(target=self.flush).start()
-            
+        self.BBs.append(BB)
+        self.flushCheck()
+
     def add_multi(self,photos,timestamps,card_IDs,BBs):
-        #print(list(map(type, [photos, timestamps, card_IDs, BBs])))
-        assert type(photos) is list and type(timestamps) is list and type(card_IDs) is list and \
-               type(BBs) is list, \
-            "all parameters must be lists"
-        xmins, ymins, xmaxs, ymaxs = zip(*BBs)
-        self.photos += [self.numpy2bytes(img) for img in photos]
-        self.thumbnails += [self.numpy2bytes(img[max(0,ymins[i]):ymaxs[i],min(0,xmins[i]):xmaxs[i]]) for i,img in enumerate(photos)]
+        self.full_frames += photos
         self.timestamps += [int(t*1000) for t in timestamps]
         self.card_IDs += card_IDs
-        self.xmins += xmins
-        self.ymins += ymins
-        self.xmaxs += xmaxs
-        self.ymaxs += ymaxs
-        
-        #if len(self.photos) > self.bufferSize:
-            #self.flush()
-            #if not self.locked:
-            #    self.locked = True
-            #    threading.Thread(target=self.flush).start()
-            
+        self.BBs += BBs
+        self.flushCheck()
+
+    def cropThumbnail(self, img, BB, paddingRatio=0.35):
+        xmin, ymin, xmax, ymax = BB
+        H, W, C = img.shape
+        bbH = xmax - xmin
+        bbW = ymax - ymin
+
+        xminPadded = max(0, xmin - int(bbW * paddingRatio))
+        yminPadded = max(0, ymin - int(bbH * paddingRatio))
+        xmaxPadded = min(W, xmax + int(bbW * paddingRatio))
+        ymaxPadded = min(H, ymax + int(bbH * paddingRatio))
+
+        cropped_img = img[yminPadded:ymaxPadded, xminPadded:xmaxPadded]
+        resized_img = cv2.resize(cropped_img, (min(125, bbW), min(125, bbH)))
+
+        return resized_img
+
     def flushCheck(self):
-        while(True):
-            #start = time.time()
-            if len(self.photos) > self.bufferSize:
-                self.flush()
-            time.sleep(.3)
-            #end = time.time()
-            #if (3 - (end-start) > 0):
-                #time.sleep(3 - (end-start))
-        
-        
-    def flush(self):
-        if len(self.photos) == 0:
-            self.locked = False
-            return
+        if len(self.full_frames) > self.bufferSize and not self.locked:
+
+            self.locked = True
+            threading.Thread(target=self.flush).start()
+
+    def flush(self, flushBufferSizeOnly=True):
+        flush_start = time.time()
         connection = pymysql.connect(host,user,password,database,charset='utf8mb4')
         try:
+            if flushBufferSizeOnly:
+                flush_full_frames = self.full_frames[-self.bufferSize:]
+                flush_timestamps = self.timestamps[-self.bufferSize:]
+                flush_card_IDs = self.card_IDs[-self.bufferSize:]
+                flush_BBs = self.BBs[-self.bufferSize:]
+
+                self.full_frames = self.full_frames[:-self.bufferSize]
+                self.timestamps = self.timestamps[:-self.bufferSize]
+                self.card_IDs = self.card_IDs[:-self.bufferSize]
+                self.BBs = self.BBs[:-self.bufferSize]
+            else:
+                flush_full_frames = self.full_frames
+                flush_timestamps = self.timestamps
+                flush_card_IDs = self.card_IDs
+                flush_BBs = self.BBs
+
             with connection.cursor() as cursor:
-                cursor.execute('SELECT Auto_increment FROM information_schema.tables WHERE table_name="photo"')
-                first_ID = cursor.fetchone()[0] + 1
-                photo_IDs = list(range(first_ID, first_ID+len(self.photos)))
-                query = 'INSERT INTO photo (photo_ID,photo_img,timestamp) VALUES (%s,%s,%s)'
-                cursor.executemany(query,zip(photo_IDs,self.photos,self.timestamps))
-                
-                for index,value in enumerate(self.thumbnails):
-                    if (not value):
-                        del self.thumbnails[index]
-                        del photo_IDs[index]
-                        del self.xmins[index]
-                        del self.ymins[index]
-                        del self.xmaxs[index]
-                        del self.ymaxs[index]
-                        del self.card_IDs[index]
+                full_frames = list(map(self.numpy2bytes,flush_full_frames))
+                thumbnails = [self.cropThumbnail(img, BB)
+                    for img, BB in zip(flush_full_frames, flush_BBs)]
+                thumbnails = list(map(self.numpy2bytes,thumbnails))
+                xmins,ymins,xmaxs,ymaxs = zip(*flush_BBs)
 
-                cursor.execute('SELECT Auto_increment FROM information_schema.tables WHERE table_name="thumbnail"')
-                first_ID = cursor.fetchone()[0] + 1
-                thumbnail_IDs = list(range(first_ID, first_ID+len(self.thumbnails)))
-                query = 'INSERT INTO thumbnail (thumbnail_ID,photo_ID,thumbnail_img,xmin,ymin,xmax,ymax) VALUES (%s,%s,%s,%s,%s,%s,%s)'
-                cursor.executemany(query, zip(thumbnail_IDs,photo_IDs,self.thumbnails,
-                                              self.xmins,self.ymins,self.xmaxs,self.ymaxs))
-                
-                
-                #print(thumbnail_IDs)
-                query = 'INSERT INTO annotation (thumbnail_ID,card_ID) VALUES (%s,%s)'
-                cursor.executemany(query, zip(thumbnail_IDs,self.card_IDs))
+                query = '''
+                    INSERT INTO photo (timestamp,full_frame,thumbnail,xmin,ymin,xmax,ymax,card_ID,is_it_sure)
+                    VALUES            (       %s,        %s,       %s,  %s,  %s,  %s,  %s,     %s,         1)
+                '''
 
+                cursor.executemany(
+                    query,
+                    zip(flush_timestamps,
+                        full_frames,
+                        thumbnails,
+                        xmins,ymins,xmaxs,ymaxs,
+                        flush_card_IDs))
                 connection.commit()
+
+            stat_str = 'Flush took %3.4f seconds' % (time.time()-flush_start)
+            if not flushBufferSizeOnly:
+                self.emptyBuffer()
+                print(stat_str)
+            else:
+                print(stat_str + ', %d entries remained in the buffer'%len(self.BBs))
+
         finally:
             connection.close()
-        
-        self.emptyBuffer()
-        self.locked = False
+            self.locked = False

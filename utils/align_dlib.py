@@ -115,7 +115,7 @@ class AlignDlib:
     INNER_EYES_AND_BOTTOM_LIP = [39, 42, 57]
     OUTER_EYES_AND_NOSE = [36, 45, 33]
 
-    def __init__(self, facePredictor=None, region=None, grayScale=False, DNN=False):
+    def __init__(self, facePredictor=None, region=None, grayScale=False, DNN=True):
         """
         Instantiate an 'AlignDlib' object.
 
@@ -228,24 +228,6 @@ class AlignDlib:
         points = self.predictor(rgbImg, bb)
         return list(map(lambda p: (p.x, p.y), points.parts()))
 
-
-    def cropThumbnail(self, img, bb, paddingRatio=0.35):
-        xmin = bb.left()
-        ymin = bb.top()
-        xmax = bb.right()
-        ymax = bb.bottom()
-        
-        H, W, C = img.shape
-        bbH = xmax - xmin
-        bbW = ymax - ymin
-        
-        xminPadded = max(0, xmin - int(bbW * paddingRatio))
-        yminPadded = max(0, ymin - int(bbH * paddingRatio))
-        xmaxPadded = min(W, xmax + int(bbW * paddingRatio))
-        ymaxPadded = min(H, ymax + int(bbH * paddingRatio))
-        
-        return img[yminPadded:ymaxPadded, xminPadded:xmaxPadded]
-    
 
     def align(self, imgDim, rgbImg, bb=None,
               landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP,

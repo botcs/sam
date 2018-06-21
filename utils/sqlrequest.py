@@ -137,6 +137,6 @@ def getCard2Name():
         
         Returns: a whole new dictionary of the current known card_ID <-> name pairs
     '''
-    qresult = db_query('SELECT name, card_ID FROM user')
-    card2name = {q['card_ID']:q['name'] for q in qresult}
+    qresult = db_query('SELECT shibboleth, card_ID FROM user')
+    card2name = {q['card_ID']:q['shibboleth'] for q in qresult}
     return card2name

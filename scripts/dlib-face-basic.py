@@ -46,7 +46,9 @@ class DeepFaceDetector:
         mmod_rectangles = self.detector(*args, **kwargs)
         return dlib.rectangles([r.rect for r in mmod_rectangles])
 
+
 detector = DeepFaceDetector()
+
 
 i = 0
 start_time = time.time()

@@ -27,8 +27,11 @@ class Tracer:
         self.cached_embeddings = Tensor(0, 128)
         self.cached_fullframes = []
         self.cached_bboxes = []
-        self.cached_IDs = []
         self.cached_times = []
+    
+    
+    def flush(self):
+        self.uploader.flushCheck()
     
     
     def track(self, bgrImg, mainBB, embedding128, AUTHORIZED_ID, KNOWN_DB, virtual=False):
@@ -45,9 +48,8 @@ class Tracer:
             if AUTHORIZED_ID is None:
                 # BEGIN CACHE-ING UNKNOWN SAMPLES
                 self.cached_embeddings = torch.cat([self.cached_embeddings, embedding128])
-                self.cached_fullframes.append(bgrImg.copy())
+                self.cached_fullframes.append(bgrImg)
                 self.cached_bboxes.append((xmin, ymin, xmax, ymax))
-                self.cached_IDs.append(AUTHORIZED_ID)
                 self.cached_times.append(time.time())
             else:
                 if len(self.cached_embeddings) > 0:
@@ -55,20 +57,25 @@ class Tracer:
                     KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], self.cached_embeddings])
                     KNOWN_DB['id'].extend([AUTHORIZED_ID for _ in range(len(self.cached_embeddings))])
                     if True:#not virtual:
+                        t = time.time()
                         self.uploader.add_multi(
                             photos=self.cached_fullframes, 
                             timestamps=self.cached_times, 
-                            card_IDs=self.cached_IDs, 
+                            card_IDs=[AUTHORIZED_ID for _ in range(len(self.cached_embeddings))], 
                             BBs=self.cached_bboxes)
-                    
+                        
                     self.initCache()
                 
-                print('ONLINE ASSIGNMENT: "%s"'%AUTHORIZED_ID)
+                #print('ONLINE ASSIGNMENT: "%s"'%AUTHORIZED_ID)
                 KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], embedding128])
                 KNOWN_DB['id'].append(AUTHORIZED_ID)
                 if True:#not virtual:
+                    t = time.time()
                     self.uploader.add_single(
                         bgrImg, time.time(), AUTHORIZED_ID, (xmin, ymin, xmax, ymax))
+                        
+                    with open('async-time-plot.txt', 'a') as f:
+                        f.write('%1.9f\n'%(time.time()-t))
                 
         else: 
             self.initCache()

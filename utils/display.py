@@ -20,7 +20,7 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, car
 
     x, y, w, h = rect_to_bb(bb)
     
-    x_offset = 40
+    x_offset = 80
     y_offset = 40
     radius_addition = 15
     font_scale = 1.5
@@ -40,7 +40,7 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, car
             shown_ID = id_counter[0][0]
             if card2nameDB.get(shown_ID) is not None:
                 shown_ID = card2nameDB[id_counter[0][0]]
-            text = '%s %2d %%'%(shown_ID, percentage)
+            text = '%s'%(shown_ID)
         
         # Show statistics below the bounding box
         cv2.putText(bgrImg, text, (x + x_offset-w//2, y + h + y_offset + radius_addition),
