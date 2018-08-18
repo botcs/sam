@@ -163,7 +163,8 @@ def send(bgrImg, AUTHORIZED_ID):
     
     client_data = {
         'bgrImg': jpg_as_text,
-        'AUTHORIZED_ID': AUTHORIZED_ID
+        'AUTHORIZED_ID': AUTHORIZED_ID,
+        'message_ts': time()
     }
     message = pickle.dumps(client_data)
     lock = threading.RLock()
@@ -176,7 +177,8 @@ def send(bgrImg, AUTHORIZED_ID):
     finally:
         pass
         #lock.release()
-    print('Send image and ID', bgrImg.shape, AUTHORIZED_ID)
+    print('Sent image %15s and ID [%10s] at time: [%10d]'%
+        (str(bgrImg.shape), AUTHORIZED_ID, int(time()*1000)))
 
 
 def recv():

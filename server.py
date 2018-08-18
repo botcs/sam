@@ -203,7 +203,8 @@ def send():
     BOUNDING_BOXES = [rect_to_bb(rect) for rect in DLIB_BOUNDING_BOXES]
     if DLIB_MAIN_BBOX is not None:
         MAIN_BBOX = rect_to_bb(DLIB_MAIN_BBOX)
-    
+    else:
+        MAIN_BBOX = None
     sendData = {
         'id_counter': id_counter,
         'BOUNDING_BOXES': BOUNDING_BOXES,
@@ -213,6 +214,7 @@ def send():
         'AUTHORIZED_ID': AUTHORIZED_ID,
         'RECOGNIZED_ID': RECOGNIZED_ID,
         'consecutive_occurrence': consecutive_occurrence,
+        'message_ts': time()
     }
     message = json.dumps(sendData)
     
@@ -235,6 +237,7 @@ def recv():
     try:
         message = server_socket.recv()
         client_data = pickle.loads(message)
+        message_ts = client_data['message_ts']
         AUTHORIZED_ID = client_data['AUTHORIZED_ID']
         
         jpg_as_text = client_data['bgrImg']
@@ -248,7 +251,9 @@ def recv():
     finally:
         pass
         #lock.release()
-    print('Receieved image and ID', bgrImg.shape, AUTHORIZED_ID)
+    delay_time = time()*1000 - message_ts*1000 
+    print('Receieved image %15s and ID [%10s] with delay [%4.0f] msec'%
+        (str(bgrImg.shape), AUTHORIZED_ID, delay_time))
     return bgrImg, AUTHORIZED_ID
 
 if __name__ == '__main__':
@@ -265,11 +270,14 @@ if __name__ == '__main__':
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
             bgrImg, AUTHORIZED_ID = recv()
+            if it % 5 != 0:
+                continue
                         
             DLIB_BOUNDING_BOXES = aligner.getAllFaceBoundingBoxes(bgrImg)
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
             
             if DLIB_MAIN_BBOX is None:
+                threading.Thread(target=send).start()
                 continue
 
             # STEP 2: PREPROCESS IMAGE
