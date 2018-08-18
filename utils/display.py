@@ -8,7 +8,7 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, car
         
         Args: 
             bgrImg - [H, W, C] shaped numpy array, where C=3 and order is B G R
-            bb - [xmin, ymin, xmax, ymax] of the bounding box, type: dlib.rectangle
+            bb - [xmin, ymin, w, h] of the bounding box, type: dlib.rectangle
             
             id_counter - {ID:occurrence}  (optional)
             consecutive_occurrence - counter for gradual color shift (optional)
@@ -17,8 +17,9 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, car
             bgrImg - the modified image
               
     '''
-
-    x, y, w, h = rect_to_bb(bb)
+    # This is handled on server side
+    #x, y, w, h = rect_to_bb(bb)
+    x, y, w, h = bb
     
     x_offset = 80
     y_offset = 40
@@ -109,13 +110,24 @@ def drawBanner(img, id_counter=None, card2nameDB=None, authorizedID=None):
     
     if id_counter is not None:    
         for i, (n, c) in enumerate(id_counter[:3]):
+            registered = False
             if card2nameDB.get(n) is not None:
+                registered = True
                 n = card2nameDB.get(n)
             text = '%s (%2d)'%(n, c)
             
+            # If user is registered and ID is the first then use Green text
+            if i == 0:
+                if registered:
+                    color = (40, 200, 40)
+                else:
+                    color = (0, 0, 200)
+            else:
+                color = (0, 0, 0)
+            
             cv2.putText(img, text, (30 + i*150, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=0.5, color=(0,0,0), 
+                fontScale=0.5, color=color, 
                 thickness=1, lineType=cv2.LINE_AA)
 
     else:

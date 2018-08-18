@@ -10,11 +10,13 @@ import glob
 
 import os
 
-from .sqlrequest import db_query
+#sys.path.insert(0, '/home/nvidia/sam/utils')
+sys.path.insert(0, '/home/botoscs/tegra-home/sam/utils')
+from sqlrequest import db_query, initDB
 
-#base_dir = '/home/nvidia/card_log/'
+base_dir = '/home/nvidia/card_log/'
 #base_dir = '/home/levi/kibu/card/'
-base_dir = '/tmp/'
+#base_dir = '/tmp/'
 
 OKBLUE = '\033[94m'
 GREEN = '\033[92m'
@@ -26,9 +28,11 @@ UNDERLINE = '\033[4m'
 
 class ITKGatePirate():
     def __init__(self, port='auto', baudrate=9600, pmode='daemon'):
+        
+        initDB()    
         if port == 'auto':
-            #self.port = glob.glob('/dev/ttyUSB*')[0]
-            self.port = glob.glob('/dev/ttyACM*')[0]
+            self.port = glob.glob('/dev/ttyUSB*')[0]
+            #self.port = glob.glob('/dev/ttyACM*')[0]
         else:
             self.port = port
 
@@ -52,16 +56,14 @@ class ITKGatePirate():
         else:
             print('invalid mode')
             
-        with open(os.path.join(base_dir, 'emulate.txt'), 'w') as crf:
-            pass
-        with open(os.path.join(base_dir, 'last.txt'), 'w') as crf:
-            pass
+        # Make sure files exists, and are empty
+        open(os.path.join(base_dir, 'emulate.txt'), 'w')
+        open(os.path.join(base_dir, 'last.txt'), 'w')
 
         self.last_raw_data = ""
 
     def serial_read(self, num=64, timeout=300):
         raw_data = bytearray(b'')
-        #timeout = 300 # ms
         to = self.ser.timeout
         self.ser.timeout = 0
         try:
@@ -88,14 +90,16 @@ class ITKGatePirate():
         return byte_count
 
     def time_now(self):
-         t = int(time()*1000)
-         return t
+        # Returns miliseconds in linux epoch time
+        t = int(time()*1000)
+        return t
          
-    def SQLInsert(self, cardid, channel, t_now, status):
+    def SQLInsert(self, cardid, channel, t_now, status, emulated):
+        emulated = int(emulated)
         SQL_INSERT = """
-            INSERT INTO card_read_log(card_ID, timestamp, gate)
-            VALUES("{card_ID}", {timestamp}, "{gate}")
-        """.format(card_ID=cardid, timestamp=t_now, gate=channel, status=status)
+            INSERT INTO card_log(card_ID, timestamp, gate, emulated)
+            VALUES("{card_ID}", {timestamp}, "{gate}", {emulated})
+        """.format(card_ID=cardid, timestamp=t_now, gate=channel, emulated=emulated)
         db_query(SQL_INSERT)
 
 
@@ -110,6 +114,8 @@ class ITKGatePirate():
         try:
             with open(self.log_file_name, 'a') as logfile:
                 while True:
+                
+                    ### READ
                     raw_data = self.serial_read(num=9)
                     (cardid, channel, status) = self.process_raw_data(raw_data)
                     t_now = self.time_now()
@@ -118,23 +124,48 @@ class ITKGatePirate():
                         logfile.write(file_str)
                         logfile.flush()
                         try:
-                            self.SQLInsert(cardid=cardid, channel=channel, t_now=t_now, status=status)
+                            self.SQLInsert(
+                                cardid=cardid, 
+                                channel=channel, 
+                                t_now=t_now, 
+                                status=status, 
+                                emulated=False)
                         except (Exception) as e:
                             print(e)
 
                         with open(os.path.join(base_dir, 'last.txt'), 'w') as out:
                             out.write(file_str)
                         status_str = "OK" if status==0 else "SHALL NOT PASS"
-                        print_str = "0x{id} {status} on channel {ch} at {tim}\r\n".format(id=cardid, ch=channel, status=status_str, tim=str(datetime.fromtimestamp(int(t_now/1000))))
+                        print_str = "0x{id} {status} on channel {ch} at {time}\r\n".format(
+                            id=cardid, 
+                            ch=channel, 
+                            status=status_str, 
+                            time=str(datetime.fromtimestamp(int(t_now/1000))))
                         print(print_str, end='')
                     elif len(raw_data) != 0:
                         print("Status: {}, raw_data={}".format(status,raw_data))
+                        
+                        
+                    ### EMULATE
                     try:
                         emf = open(os.path.join(base_dir, 'emulate.txt'), 'r')
                         a = emf.read().splitlines()
                         if len(a) > 0:
                             if len(a[0]) == 8:
-                                #retv = self._emulateCardID(cardid=a[0])
+                                cardid = a[0]
+                                # HARDCODED FOR A SINGLE ENTRY
+                                # TODO: Multiple entry
+                                channel = 'A'
+                                status = self._emulateCardID(cardid=cardid, channel=channel)
+                                try:
+                                    self.SQLInsert(
+                                        cardid=cardid, 
+                                        channel=channel, 
+                                        t_now=t_now, 
+                                        status=status, 
+                                        emulated=True)
+                                except (Exception) as e:
+                                    print(e)
                                 self._force_open()
                             else:
                                 print("Invalid data read from emulate.txt (<{data}>)".format(data=a[0]))
@@ -232,6 +263,7 @@ class ITKGatePirate():
             return (cardid, t_now, channel, status)
 
     def emulateCardID(self, cardid, channel='A'):
+        t_now = self.time_now()
         with open(os.path.join(base_dir, 'emulate.txt'), 'w') as emuf:
             emuf.write(cardid)
 
@@ -265,8 +297,8 @@ class ITKGatePirate():
             return -4
 
         # wait for led access status
-        #tatus = self.read_entry_status()
-        return (0)
+        # status = self.read_entry_status()
+        return 0
 
 
     def reset_mcu(self, wait_for_buffer_empty=True):

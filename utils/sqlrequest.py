@@ -12,7 +12,9 @@ from datetime import datetime
 
 host = user = password = database = None
 
-def initDB(conf_file='/home/botoscs/sam/utils/db.conf'):
+#sys.path.insert(0, '/home/botoscs/tegra-home/sam/utils')
+
+def initDB(conf_file='utils/db.conf'):
     global host
     global user
     global password
@@ -23,6 +25,8 @@ def initDB(conf_file='/home/botoscs/sam/utils/db.conf'):
         user = f.readline().strip()
         password = f.readline().strip()
         database = f.readline().strip()
+    
+    return host, user, password, database
     
 def db_query(query,args=None,as_dict=True,verbose=True):
     if host is None or user is None or password is None or database is None:

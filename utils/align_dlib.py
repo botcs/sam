@@ -60,7 +60,7 @@ TEMPLATE = np.float32([
 TPL_MIN, TPL_MAX = np.min(TEMPLATE, axis=0), np.max(TEMPLATE, axis=0)
 MINMAX_TEMPLATE = (TEMPLATE - TPL_MIN) / (TPL_MAX - TPL_MIN)
 
-def rect_to_bb(rect, ratio=1):
+def rect_to_bb(rect):
 	# take a bounding predicted by dlib and convert it
 	# to the format (x, y, w, h) as we would normally do
 	# with OpenCV
@@ -68,12 +68,17 @@ def rect_to_bb(rect, ratio=1):
     # y = rect[0][1]
     # w = rect[1][0] - x
     # h = rect[1][1] - y
-    x = rect.left() / ratio
-    y = rect.top() / ratio
-    w = rect.right() / ratio - x
-    h = rect.bottom() / ratio - y
-    x, y, w, h = map(int, [x, y, w, h])
+    #x = rect.left() / ratio
+    #y = rect.top() / ratio
+    #w = rect.right() / ratio - x
+    #h = rect.bottom() / ratio - y
+    #x, y, w, h = map(int, [x, y, w, h])
     # return a tuple of (x, y, w, h)
+    x = rect.left()
+    y = rect.top()
+    w = rect.width()
+    h = rect.height()
+    
     return x, y, w, h
 
 class DeepFaceDetector:

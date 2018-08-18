@@ -5,18 +5,19 @@ from .async_sql_uploader import AsyncSQLUploader
 
 class Tracer:
     '''
+        ABSTRACT CLASS
         Traces the bounding box(es) appearing on the stream
         
         once the ID is revealed of the traced box (i.e. by reading the card) 
         then all previous bounding box are tagged as well retrospectively
-        
+         
         
         When AUTH occurs then assign latest frame ONLINE
         
         When tracing session dies -> bbox x coord jumps further than treshold then
          assign all previously unassigned 
     '''
-    def __init__(self, x_displacement_treshold=100, SQLBufferSize=30):
+    def __init__(self, x_displacement_treshold=100, SQLBufferSize=5):
         self.treshold = x_displacement_treshold
         self.last_xmin = None
         self.bbox_distances = [0]
@@ -33,6 +34,14 @@ class Tracer:
     def flush(self):
         self.uploader.flushCheck()
     
+class CardValidationTracer(Tracer):            
+    '''
+    Implements policy where:
+        - Caching BEGINS when a face enters the screen
+        - The cache is UPLOADED to the MySQL server when card AUTH happens
+        - If horizontal displacement of the face is larger than the treshold
+          the cache is EMPTIED
+    '''
     
     def track(self, bgrImg, mainBB, embedding128, AUTHORIZED_ID, KNOWN_DB, virtual=False):
         xmin, ymin, xmax, ymax = mainBB.left(), mainBB.top(), mainBB.right(), mainBB.bottom()
@@ -72,7 +81,7 @@ class Tracer:
                 if True:#not virtual:
                     t = time.time()
                     self.uploader.add_single(
-                        bgrImg, time.time(), AUTHORIZED_ID, (xmin, ymin, xmax, ymax))
+                        bgrImg, t, AUTHORIZED_ID, (xmin, ymin, xmax, ymax))
                         
                     with open('async-time-plot.txt', 'a') as f:
                         f.write('%1.9f\n'%(time.time()-t))
@@ -81,4 +90,29 @@ class Tracer:
             self.initCache()
             AUTHORIZED_ID = None
         
+        
         return AUTHORIZED_ID, KNOWN_DB
+        
+        
+        
+        
+class PredictionTracer(Tracer):            
+    '''
+    Implements policy where:
+        - Caching BEGINS when a face is RECOGNIZED (see the main recog. policy)
+        - The cache is UPLOADED to the MySQL server when face leaves the frame
+        - If horizontal displacement of the face is larger than the treshold
+          the cache is EMPTIED
+    '''
+        
+    def addPrediction(self, bgrImg, mainBB, RECOGNIZED_ID):
+        xmin, ymin, xmax, ymax = mainBB.left(), mainBB.top(), mainBB.right(), mainBB.bottom()
+    
+        self.uploader.add_single(
+            bgrImg, 
+            time.time(), 
+            RECOGNIZED_ID, 
+            (xmin, ymin, xmax, ymax),
+            is_pred=True
+        )
+
