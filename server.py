@@ -54,8 +54,6 @@ from utils import prepareOpenFace
 from utils import AlignDlib
 from utils import rect_to_bb
 from utils import db_query
-from utils import ITKGatePirate
-from utils import drawBBox, drawBanner
 from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
 
@@ -248,7 +246,8 @@ def recv():
         AUTHORIZED_ID = client_data['AUTHORIZED_ID']
         
         jpg_as_text = client_data['bgrImg']
-        img = base64.b64decode(jpg_as_text)
+        #img = base64.b64decode(jpg_as_text)
+        img = jpg_as_text
         img = np.fromstring(img, dtype=np.uint8)
         bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
         
@@ -259,8 +258,9 @@ def recv():
         pass
         #lock.release()
     delay_time = (time() - message_ts)*1000 
-    print('Receieved image #%010d and ID [%10s] with delay [%4.0f] msec'%
-        (it, AUTHORIZED_ID, delay_time))
+    FPS = it / (time() - start_time)
+    print('Receieved image #%010d and ID [%10s] with delay [%4.0f] msec, Avg. FPS = %3.1f'%
+        (it, AUTHORIZED_ID, delay_time, FPS))
     return bgrImg, AUTHORIZED_ID, delay_time
 
 if __name__ == '__main__':

@@ -7,5 +7,4 @@ from .gatepirate import ITKGatePirate
 from .AsyncSave import AsyncSaver
 from .async_sql_uploader import AsyncSQLUploader
 from .sqlrequest import initDB, db_query, push_images, getName, getCard2Name
-from .display import drawBBox, drawBanner
 from .tracer import CardValidationTracer, PredictionTracer
