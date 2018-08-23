@@ -93,10 +93,16 @@ parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
 parser.add_argument('--port', type=int, default=5555, help='Where to send raw image and card reader data, and receive statistics from. Default: 5555')
+#parser.add_argument('--process-every', type=int, default=1, help='process every Nth frame and discard others')
+parser.add_argument('--discard-older', type=int, default=500, help='discard frames older than N msec')
+parser.add_argument('--sql-buffer-size', type=int, default=50, help='Uploading buffered images to the database may take some time. Large size will occur slowdon less frequently but for more time. Small buffer size will trigger SQL sync more often, but the process will be shorter. Opt with regards to the actual bandwith.')
+
 args = parser.parse_args()
 print('Args parsed:', args)
+   
+# PyTorch version check
+v3 = torch.__version__ == '0.3.1'
     
-
 def initializeServer():
     global IS_SERVER_RUNNING
     global start_time
@@ -152,8 +158,9 @@ def initializeServer():
         KNOWN_DB = torch.load(args.database)
         
         # Torch 0.3.1 legacy stuff
-        # if isinstance(KNOWN_DB['emb'], torch.autograd.Variable): # LEGACY LINE
-        #     KNOWN_DB['emb'] = KNOWN_DB['emb'].data # LEGACY LINE
+        if v3:
+            if isinstance(KNOWN_DB['emb'], torch.autograd.Variable): # LEGACY LINE
+                KNOWN_DB['emb'] = KNOWN_DB['emb'].data # LEGACY LINE
         
             
     print('Size of database: %5d samples' % len(KNOWN_DB['emb']))     
@@ -181,8 +188,8 @@ def initializeServer():
     
     
     # tracer handles online training and ID assignment
-    cardTracer = CardValidationTracer()
-    predTracer = PredictionTracer()
+    cardTracer = CardValidationTracer(SQLBufferSize=args.sql_buffer_size)
+    predTracer = PredictionTracer(SQLBufferSize=args.sql_buffer_size)
     
     
     # tensor converter takes a numpy array and returns a normalized Torch Tensor 
@@ -251,32 +258,40 @@ def recv():
     finally:
         pass
         #lock.release()
-    delay_time = time()*1000 - message_ts*1000 
-    print('Receieved image %15s and ID [%10s] with delay [%4.0f] msec'%
-        (str(bgrImg.shape), AUTHORIZED_ID, delay_time))
-    return bgrImg, AUTHORIZED_ID
+    delay_time = (time() - message_ts)*1000 
+    print('Receieved image #%010d and ID [%10s] with delay [%4.0f] msec'%
+        (it, AUTHORIZED_ID, delay_time))
+    return bgrImg, AUTHORIZED_ID, delay_time
 
 if __name__ == '__main__':
     initializeServer()
     print('Starting service...')
-    torch.no_grad().__enter__()
+    if not v3: 
+        torch.no_grad().__enter__()
     while IS_SERVER_RUNNING:
         it += 1
         
-        cardTracer.flush()
-        predTracer.flush()
+        # Only flush when the server is idle
+        #cardTracer.flush()
+        #predTracer.flush()
 
         try:
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
-            bgrImg, AUTHORIZED_ID = recv()
-            if it % 5 != 0:
+            bgrImg, AUTHORIZED_ID, delay_time = recv()
+            if delay_time > args.discard_older:
                 continue
-                        
+            '''
+            if it % args.process_every != 0:
+                continue
+            '''            
             DLIB_BOUNDING_BOXES = aligner.getAllFaceBoundingBoxes(bgrImg)
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
             
             if DLIB_MAIN_BBOX is None:
+                cardTracer.flush()
+                predTracer.flush()
+
                 threading.Thread(target=send).start()
                 continue
 
@@ -290,15 +305,16 @@ if __name__ == '__main__':
             x = x[None]
             if use_cuda:
                 x = x.cuda()
-                #x = torch.autograd.Variable(x, volatile=True)# LEGACY LINE
+                if v3:
+                    x = torch.autograd.Variable(x, volatile=True, requires_grad=False) # LEGACY LINE
             
             # STEP 3: EMBEDD IMAGE
             inference_start = time()
             embedding128 = net(x)[0]
-            #embedding128 = embedding128.data # LEGACY LINE
+            if v3:
+                embedding128 = embedding128.data # LEGACY LINE
             inference_time = time() - inference_start            
 
-           
             # STEP 4: COMPARE TO REGISTERED EMBEDDINGS
             if len(KNOWN_DB['emb']) > 0:
                 topk_start = time()
@@ -324,8 +340,8 @@ if __name__ == '__main__':
                 count_time = time() - count_start
             else:
                 id_counter = [('<UNK>', 100)]
-          
-            # STEP 6: (RETARDED-)SMART TRACKING:
+
+            # STEP 6: TRACKING:
             AUTHORIZED_ID, KNOWN_DB = cardTracer.track(
                 bgrImg=bgrImg.copy(), 
                 mainBB=DLIB_MAIN_BBOX, 
@@ -372,8 +388,9 @@ if __name__ == '__main__':
                         OPEN_GATE = True
                         last_cardwrite = time()
                     
-                else:
+                elif readyToEmulate:
                     print('Would open, but ID is not registered', RECOGNIZED_ID)
+                    last_cardwrite = time()
             
             
             

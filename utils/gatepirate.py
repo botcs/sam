@@ -11,7 +11,7 @@ import glob
 import os
 
 #sys.path.insert(0, '/home/nvidia/sam/utils')
-sys.path.insert(0, '/home/botoscs/tegra-home/sam/utils')
+sys.path.insert(0, 'utils')
 from sqlrequest import db_query, initDB
 
 base_dir = '/home/nvidia/card_log/'

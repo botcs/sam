@@ -10,14 +10,15 @@ from .sqlrequest import initDB
 
 
 class AsyncSQLUploader:
-    def __init__(self, bufferSize=20):
+    def __init__(self, bufferSize, keepEvery=1, autoFlush=False):
         self.dbCredentials = initDB()
         
         self.bufferSize = bufferSize
         self.emptyBuffer()
         self.locked = False
-        self.discardNum = 0
+        self.keepEvery = keepEvery
         self.lastFlushTime = -1
+        self.autoFlush = autoFlush
 
     def emptyBuffer(self):
         self.timestamps = []
@@ -40,7 +41,7 @@ class AsyncSQLUploader:
 
     def add_single(self, photo, timestamp, card_ID, BB, is_pred=False):
         self.discardCounter += 1
-        if self.discardCounter < self.discardNum:
+        if self.discardCounter < self.keepEvery:
             return
         self.discardCounter = 0
         self.timestamps.append(int(timestamp*1000))
@@ -48,15 +49,15 @@ class AsyncSQLUploader:
         self.card_IDs.append(card_ID)
         self.BBs.append(BB)
         self.is_preds.append(is_pred)
-        self.flushCheck()
+        if self.autoFlush: self.flushCheck()
 
     def add_multi(self, photos, timestamps, card_IDs, BBs, is_pred=False):
-        self.full_frames += photos
-        self.timestamps += [int(t*1000) for t in timestamps]
-        self.card_IDs += card_IDs
-        self.BBs += BBs
-        self.is_preds += [is_pred for _ in range(len(photos))]
-        self.flushCheck()
+        self.full_frames += photos[::self.keepEvery]
+        self.timestamps += [int(t*1000) for t in timestamps][::self.keepEvery]
+        self.card_IDs += card_IDs[::self.keepEvery]
+        self.BBs += BBs[::self.keepEvery]
+        self.is_preds += [is_pred for _ in range(len(photos))][::self.keepEvery]
+        if self.autoFlush: self.flushCheck()
 
     def cropThumbnail(self, img, BB, paddingRatio=0.35):
         xmin, ymin, xmax, ymax = BB
@@ -127,7 +128,7 @@ class AsyncSQLUploader:
                     )
                 connection.commit()
 
-            stat_str = 'Flush took %3.4f seconds' % (time.time()-flush_start)
+            stat_str = 'SQL Flush took %3.4f seconds' % (time.time()-flush_start)
             if not flushBufferSizeOnly:
                 self.emptyBuffer()
                 print(stat_str)

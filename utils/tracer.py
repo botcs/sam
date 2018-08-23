@@ -64,7 +64,8 @@ class CardValidationTracer(Tracer):
                 if len(self.cached_embeddings) > 0:
                     print('RETROGRADE ASSIGNMENT: "%s" of %d images'%(AUTHORIZED_ID, len(self.cached_embeddings)))
                     KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], self.cached_embeddings])
-                    KNOWN_DB['id'].extend([AUTHORIZED_ID for _ in range(len(self.cached_embeddings))])
+                    KNOWN_DB['id'].extend(
+                        [AUTHORIZED_ID for _ in range(len(self.cached_embeddings))])
                     if True:#not virtual:
                         t = time.time()
                         self.uploader.add_multi(
@@ -74,17 +75,17 @@ class CardValidationTracer(Tracer):
                             BBs=self.cached_bboxes)
                         
                     self.initCache()
-                
-                #print('ONLINE ASSIGNMENT: "%s"'%AUTHORIZED_ID)
-                KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], embedding128])
-                KNOWN_DB['id'].append(AUTHORIZED_ID)
-                if True:#not virtual:
-                    t = time.time()
-                    self.uploader.add_single(
-                        bgrImg, t, AUTHORIZED_ID, (xmin, ymin, xmax, ymax))
-                        
-                    with open('async-time-plot.txt', 'a') as f:
-                        f.write('%1.9f\n'%(time.time()-t))
+                else:
+                    #print('ONLINE ASSIGNMENT: "%s"'%AUTHORIZED_ID)
+                    KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], embedding128])
+                    KNOWN_DB['id'].append(AUTHORIZED_ID)
+                    if True:#not virtual:
+                        t = time.time()
+                        self.uploader.add_single(
+                            bgrImg, t, AUTHORIZED_ID, (xmin, ymin, xmax, ymax))
+
+                        with open('async-time-plot.txt', 'a') as f:
+                            f.write('%1.9f\n'%(time.time()-t))
                 
         else: 
             self.initCache()
