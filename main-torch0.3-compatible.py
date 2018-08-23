@@ -46,7 +46,7 @@ from utils import AlignDlib
 from utils import rect_to_bb
 from utils import db_query
 from utils import ITKGatePirate
-from utils import drawBBox, drawBanner
+from client_utils.display import drawBBox, drawBanner
 from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
 
@@ -163,7 +163,7 @@ if __name__ == '__main__':
     RECOGNIZED_ID = None
     consecutive_occurrence = 0
     print('Begin capture')
-    #torch.no_grad().__enter__()
+    torch.no_grad().__enter__()
     while True:
         it += 1
         cardTracer.flush()
@@ -307,9 +307,12 @@ if __name__ == '__main__':
                 
                 # Draw the main bounding box
                 for BBOX in BOUNDING_BOXES:
+                   
                     if BBOX == MAIN_BBOX:
+                        BBOX = rect_to_bb(BBOX)
                         drawBBox(bgrImg, BBOX, args, id_counter, consecutive_occurrence, CARD2NAME)
                     else:
+                        BBOX = rect_to_bb(BBOX)
                         drawBBox(bgrImg, BBOX, args)
                 
                 bgrImg = drawBanner(bgrImg, id_counter, CARD2NAME, AUTHORIZED_ID)
@@ -329,6 +332,6 @@ if __name__ == '__main__':
             
     
     # FINALLY: Save the learned representations
-    torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
+    #torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
         
             
