@@ -6,9 +6,10 @@
 # argparse - pass arguments from the command line to the script becomes extremely useful 
 # pathlib - helps finding the containing directory
 import os
-import time
+from time import time
 import argparse
 import pathlib
+
 
 ## Computer vision modules
 # torch - for neural network and GPU accelerated processes
@@ -46,7 +47,7 @@ from utils import rect_to_bb
 from utils import db_query
 from utils import ITKGatePirate
 from utils import drawBBox, drawBanner
-from utils import Tracer
+from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
 
 
@@ -64,7 +65,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--embedding-weights', type=str, help='Path to embedding network weights',
                     default=os.path.join(modelDir, 'openface.pth'))
 parser.add_argument('--database', type=str, help='path to embedding->name database',
-                    default=os.path.join(modelDir, 'NEGATIVE_DATABASE.tar'))
+                    default=os.path.join(modelDir, 'REALTIME-DB.tar'))
 parser.add_argument('--dlib-face-predictor', type=str, help='Path to dlib\'s face predictor.',
                     default=os.path.join(modelDir, 'shape_predictor_68_face_landmarks.dat'))
 
@@ -81,6 +82,7 @@ parser.add_argument('--display', action='store_true', help='Use OpenCV to show p
 parser.add_argument('--fullscreen', action='store_true', help='Enable Full Screen display. Only available if --display is used')
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
+parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
 args = parser.parse_args()
 print('Args parsed:', args)
     
@@ -88,13 +90,13 @@ print('Args parsed:', args)
 if __name__ == '__main__':
     
     # Initialize webcam before loading every other module
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(args.cam)
     ret, _ = cap.read()
     if not ret:
         raise RuntimeError('Video capture was unsuccessful.')
 
     
-    initDB('/home/botoscs/sam/utils/db.conf')
+    initDB()
 
     
     KNOWN_DB = {'emb':Tensor(0, 128), 'id':[]}
@@ -142,19 +144,21 @@ if __name__ == '__main__':
     
     
     # aligner takes a fullframe and returns a cropped > aligned (warped) image
-    aligner = AlignDlib(facePredictor=args.dlib_face_predictor, region=None)
+    aligner = AlignDlib(facePredictor=args.dlib_face_predictor, region=args.region)
     
     
     # tracer handles online training and ID assignment
-    tracer = Tracer(x_displacement_treshold=100, SQLBufferSize=5)
+    cardTracer = CardValidationTracer()
+    predTracer = PredictionTracer()
+    
     
     # tensor converter takes a numpy array and returns a normalized Torch Tensor 
     tensor_converter = ToTensor()
     
     # Initializing the face recognition application parameters
-    last_cardwrite = time.time()
+    last_cardwrite = time()
     it = 0
-    start_time = time.time()
+    start_time = time()
     idle_begin = -1
     RECOGNIZED_ID = None
     consecutive_occurrence = 0
@@ -162,7 +166,8 @@ if __name__ == '__main__':
     #torch.no_grad().__enter__()
     while True:
         it += 1
-        tracer.flush()           
+        cardTracer.flush()
+        predTracer.flush()
 
         try:
             # STEP 1: READ IMAGE
@@ -176,9 +181,9 @@ if __name__ == '__main__':
             
             if MAIN_BBOX is None:
                 if idle_begin < 0: 
-                    idle_begin = time.time()
-                idle_time = time.time() - idle_begin
-                FPS = it / (time.time()-start_time)
+                    idle_begin = time()
+                idle_time = time() - idle_begin
+                FPS = it / (time()-start_time)
                 #print('\t\t\tZzzzzz... No face detected (%4.0f sec), FPS:%2.2f\r' %\
                 #    (idle_time, FPS), flush=True, end='')
                 
@@ -212,68 +217,67 @@ if __name__ == '__main__':
                 x = torch.autograd.Variable(x, volatile=True)# LEGACY LINE
             
             # STEP 3: EMBEDD IMAGE
-            inference_start = time.time()
+            inference_start = time()
             embedding128 = net(x)[0]
             embedding128 = embedding128.data # LEGACY LINE
-            inference_time = time.time() - inference_start            
+            inference_time = time() - inference_start            
 
            
             # STEP 4: COMPARE TO REGISTERED EMBEDDINGS
             if len(KNOWN_DB['emb']) > 0:
-                topk_start = time.time()
-                x1, x2 = KNOWN_DB['emb'], embedding128.expand_as(KNOWN_DB['emb'])
-                
-                distances = pdist(x1, x2)
+                topk_start = time()
+                distances = pdist(KNOWN_DB['emb'], embedding128.expand_as(KNOWN_DB['emb']))
+                distances.squeeze_()
                 sorted_distances, idxs = torch.sort(distances)
                 sorted_distances = sorted_distances[:args.k]
                 idxs = idxs[:args.k]
-                topk_time = time.time() - topk_start
+                topk_time = time() - topk_start
                 
-                count_start = time.time()
+                count_start = time()
                 id_counter = {}
                 for idx in idxs:
-                    idx = idx[0] # LEGACY LINE
                     n = KNOWN_DB['id'][idx]
                     if id_counter.get(n) is None:
                         id_counter[n] = 1
                     else:
                         id_counter[n] += 1
                 id_counter = sorted(list(id_counter.items()), key=lambda x: x[1], reverse=True)[:args.k]
-                count_time = time.time() - count_start
+                count_time = time() - count_start
             else:
                 id_counter = [('<UNK>', 100)]
           
  
             # STEP 5: OPEN TURNSPIKE
-            # TODO: design a good policy
+            # RECOGNIZED_ID has to be present for a certain amount of time
+            # until it is validated by the policy, if RECOGNIZED_ID changes
+            # even once, it will discard previous record
             if (id_counter[0][0] != '<UNK>' and 
                 id_counter[0][1]/args.k *100 > args.threshold and 
                 RECOGNIZED_ID == id_counter[0][0]):
                 
                 consecutive_occurrence += 1
-                
-                if (not args.virtual and 
-                    consecutive_occurrence >= args.consecutive and 
-                    (time.time() - last_cardwrite) > args.card_cooldown):
-                    pirate.emulateCardID(id_counter[0][0])
-                    last_cardwrite = time.time()
-                    '''
-                    card_id = getSQLcardID(RECOGNIZED_ID)
-                    if card_id is not None:
-                        print('OPEN:', RECOGNIZED_ID, card_id)
-                        SQLInsert(card_id)
-                        if not args.virtual:
-                            pirate.emulateCardID(card_id)
-                    '''    
-                        
-
             else:
                 RECOGNIZED_ID = id_counter[0][0]
                 consecutive_occurrence = 0
+                
+            # The candidate person is RECOGNIZED
+            if consecutive_occurrence >= args.consecutive:
+                readyToEmulate = (time() - last_cardwrite) > args.card_cooldown
+                name_id = CARD2NAME.get(RECOGNIZED_ID)
+                if name_id is not None:
+                    predTracer.addPrediction(bgrImg.copy(), MAIN_BBOX, RECOGNIZED_ID)
+                    if readyToEmulate:
+                        print('OPEN:', name_id, RECOGNIZED_ID, time())
+                        pirate.emulateCardID(RECOGNIZED_ID)
+                        last_cardwrite = time()
+                else:
+                    print('Would open, but ID is not registered', RECOGNIZED_ID)
+            
+            
             
                 
             # STEP 6: (RETARDED-)SMART TRACKING:
-            AUTHORIZED_ID, KNOWN_DB = tracer.track(
+            AUTHORIZED_ID, KNOWN_DB = cardTracer.track(
                 bgrImg=bgrImg.copy(), 
                 mainBB=MAIN_BBOX, 
                 embedding128=embedding128, 
@@ -283,6 +287,7 @@ if __name__ == '__main__':
 
             if not args.virtual:        
                 CardData = pirate.readCardID(max_age=1000)
+                
             if AUTHORIZED_ID is None:
                 # HERE COMES THE CARD ID
                 if args.virtual:
@@ -294,7 +299,7 @@ if __name__ == '__main__':
                     if len(CardData) == 4:
                         AUTHORIZED_ID = CardData[0]
             
-            FPS = it / (time.time()-start_time)
+            FPS = it / (time()-start_time)
             #print('\r\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS), end='')
             
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES

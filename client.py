@@ -23,24 +23,15 @@ import zmq.eventloop.ioloop
 zmq.eventloop.ioloop.install()
 
 ## Computer vision modules
-# torch - for neural network and GPU accelerated processes
 # cv2 - for capturing web-cam and displaying the live stream
 # numpy - for general matrix manipulation of cv2 image arrays
 import numpy as np
-import dlib
-import torch
 import cv2
-
-## pytorch utility functions
-# FloatTensor - is set as the default Tensor type when recasting, easy to switch to half-precision
-# ToTensor - takes a numpy array and converts it to a torch array while normalizing it as well
-from torch.cuda import FloatTensor as Tensor
-from torchvision.transforms import ToTensor
-
+'''
 ## Sam utility modules
 # TODO: naming convention refactor
 # these bits provide auxiliary code that implements the following:
-# 
+#
 # prepareOpenFace - neural network architecture, description of the information flow graph
 # AlignDlib - Preprocess steps before the face-recognition network. E.g. cropping and rotating faces
 # db_query - interface to MySQL server
@@ -58,7 +49,8 @@ from utils import ITKGatePirate
 from utils import drawBBox, drawBanner
 from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
-
+'''
+from client_utils.display import drawBBox, drawBanner
 
 # Knowing where the script is running can be really helpful for setting proper defaults
 containing_dir = str(pathlib.Path(__file__).resolve().parent)
@@ -80,7 +72,7 @@ parser.add_argument('--dlib-face-predictor', type=str, help='Path to dlib\'s fac
 
 
 ## Auth
-parser.add_argument('--consecutive', type=int, default=30, 
+parser.add_argument('--consecutive', type=int, default=30,
     help='How many frames is required to be authorized as the same person')
 parser.add_argument('--k', type=int, help='List top K results', default=100)
 parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=50)
@@ -97,6 +89,7 @@ args = parser.parse_args()
 print('Args parsed:', args)
     
 
+
 def initializeClient():
     global IS_CLIENT_RUNNING
     global start_time
@@ -105,17 +98,7 @@ def initializeClient():
     global idle_begin
     global pirate
     global client_socket
-    
-    # These will be updated if server sends new data
-    global id_counter
-    global BOUNDING_BOXES
-    global MAIN_BBOX
-    global CARD2NAME
-    global OPEN_GATE
-    global AUTHORIZED_ID
-    global RECOGNIZED_ID
-    global consecutive_occurrence
-    
+    global current_timeout
     
     # Initialize webcam before loading every other module
     cap = cv2.VideoCapture(args.cam)
@@ -141,8 +124,25 @@ def initializeClient():
     
     context = zmq.Context()
     client_socket = context.socket(zmq.PAIR)
+    client_socket.setsockopt(zmq.LINGER, 100)
     client_socket.connect(args.server_address)
     client_socket.RCVTIMEO = 1000 # in milliseconds
+    current_timeout = 0
+
+    initializeClientVariables()
+
+
+def initializeClientVariables():
+    # These will be updated if server sends new data
+    global id_counter
+    global BOUNDING_BOXES
+    global MAIN_BBOX
+    global CARD2NAME
+    global OPEN_GATE
+    global AUTHORIZED_ID
+    global RECOGNIZED_ID
+    global consecutive_occurrence
+    
     
     id_counter = None
     BOUNDING_BOXES = None
@@ -177,9 +177,10 @@ def send(bgrImg, AUTHORIZED_ID):
     finally:
         pass
         #lock.release()
+    '''
     print('Sent image %15s and ID [%10s] at time: [%10d]'%
         (str(bgrImg.shape), AUTHORIZED_ID, int(time()*1000)))
-
+    '''
 
 def recv():
     '''
@@ -204,6 +205,7 @@ def recv():
     
     lock = threading.RLock()
     #lock.acquire()
+
     try:
         message = client_socket.recv_string()
         statistics = json.loads(message)
@@ -227,22 +229,23 @@ def recv():
 
 
 def asyncRecvLoop():
-    max_timeout = 100
-    current_timeout = 0
-    while IS_CLIENT_RUNNING and current_timeout < max_timeout:
+    global current_timeout
+    while IS_CLIENT_RUNNING:
         try:
             recv()
+            current_timeout = 0
         except zmq.Again as e:
             current_timeout += 1
-            print('CLIENT <recv> TIMEOUT, retries: [%3d/%3d]'%(
-                current_timeout, max_timeout))
-            
+            print('CLIENT <recv> TIMEOUT, retries: [%5d]'%(
+                current_timeout))
+            initializeClientVariables()
         except RuntimeError as e:
             print('CLIENT <recv loop> ERROR: ', e)
         except KeyboardInterrupt:
             print('\nInterrupted manually')
             break
-        
+	
+    client_socket.close()
     print('exiting async recv loop')
 
 
@@ -251,17 +254,10 @@ if __name__ == '__main__':
     initializeClient()
     recvThread = threading.Thread(name='<recv loop thread>', target=asyncRecvLoop)
     recvThread.start()
-
-    # Initializing the face recognition application parameters
-    #last_cardwrite = time()
-    #consecutive_occurrence = 0
-    #torch.no_grad().__enter__()
     print('Begin capture')
     while IS_CLIENT_RUNNING:
         it += 1
         
-        #cardTracer.flush()
-        #predTracer.flush()
 
         try:
             # STEP 1: READ IMAGE
@@ -323,7 +319,7 @@ if __name__ == '__main__':
                         bottomright = (aligner.regionXmax, aligner.regionYmax)
                         cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
                     ''' 
-                    bgrImg = drawBanner(bgrImg)
+                    bgrImg = drawBanner(bgrImg, current_timeout=current_timeout)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break     
@@ -340,7 +336,6 @@ if __name__ == '__main__':
                         drawBBox(bgrImg, BBOX, args, id_counter, consecutive_occurrence, CARD2NAME)
                     else:
                         drawBBox(bgrImg, BBOX, args)
-                
                 bgrImg = drawBanner(bgrImg, id_counter, CARD2NAME, AUTHORIZED_ID)
                 cv2.imshow('frame', bgrImg)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -350,8 +345,9 @@ if __name__ == '__main__':
             cv2.destroyAllWindows()
             cap.release()
             print('\nInterrupted manually')
-            IS_CLIENT_RUNNING = False
-        
+            break
+
+    IS_CLIENT_RUNNING = False
     # FINALLY: Save the learned representations
     # torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
     

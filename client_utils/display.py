@@ -1,8 +1,13 @@
 import cv2
 import numpy as np
-from .align_dlib import rect_to_bb
 
-def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, card2nameDB=None):
+def rect_to_bb(rect):
+    x = rect.left()
+    y = rect.top()
+    w = rect.width()
+    h = rect.height()
+
+def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, CARD2NAME=None):
     '''
         Draws a bounding box around a single face, shows stats if given
         
@@ -39,8 +44,8 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, car
             ratio = max(args.consecutive - consecutive_occurrence, 0) / args.consecutive
             color = (ratio * 200, 200, ratio * 200)
             shown_ID = id_counter[0][0]
-            if card2nameDB.get(shown_ID) is not None:
-                shown_ID = card2nameDB[id_counter[0][0]]
+            if CARD2NAME.get(shown_ID) is not None:
+                shown_ID = CARD2NAME[id_counter[0][0]]
             text = '%s'%(shown_ID)
         
         # Show statistics below the bounding box
@@ -95,25 +100,35 @@ def addbanner(img, bannerPath, concat=True):
     
 
 
-def drawBanner(img, id_counter=None, card2nameDB=None, authorizedID=None):
+def drawBanner(img, id_counter=None, CARD2NAME=None, AUTHORIZED_ID=None, current_timeout=0):
     '''
         Shows live statistics of the recognition algorithm
     '''
 
     H, W, C = img.shape
     H = 50
-    #cv2.rectangle(img,(0,0),(W,H),(255,255,255),-1)
-    if authorizedID is None:
+    
+        
+    if AUTHORIZED_ID is None:
         img = addbanner(img, 'passive-banner.png')
     else:
         img = addbanner(img, 'active-banner.png')
     
+    if current_timeout > 1:
+        text = 'Connecting to server... (%3d)'%current_timeout
+        cv2.putText(img, text, (30, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.5, color=(0,0,0), 
+                    thickness=1, lineType=cv2.LINE_AA)
+        return img
+
+
     if id_counter is not None:    
         for i, (n, c) in enumerate(id_counter[:3]):
             registered = False
-            if card2nameDB.get(n) is not None:
+            if CARD2NAME.get(n) is not None:
                 registered = True
-                n = card2nameDB.get(n)
+                n = CARD2NAME.get(n)
             text = '%s (%2d)'%(n, c)
             
             # If user is registered and ID is the first then use Green text
