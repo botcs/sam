@@ -35,18 +35,15 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, CAR
     if id_counter is not None:
         percentage = id_counter[0][1]/args.k*100
         thickness = 2    
-        if percentage < args.threshold or id_counter[0][0].find('>') > -1:
+        if CARD2NAME.get(shown_ID) is None:
             color = (0, 0, 200)
-            text = '<UNK>'
+            text = id_counter[0][0]
 
         else:
-            # gradually turning from white to green the 
-            ratio = max(args.consecutive - consecutive_occurrence, 0) / args.consecutive
-            color = (ratio * 200, 200, ratio * 200)
-            shown_ID = id_counter[0][0]
-            if CARD2NAME.get(shown_ID) is not None:
-                shown_ID = CARD2NAME[id_counter[0][0]]
-            text = '%s'%(shown_ID)
+            # gradually turning from white to blue the box
+            ratio = max(args.consecutive - consecutive_occurrence, 50) / args.consecutive
+            color = (200, ratio * 200, ratio * 200)
+            text = CARD2NAME[id_counter[0][0]]
         
         # Show statistics below the bounding box
         cv2.putText(bgrImg, text, (x + x_offset-w//2, y + h + y_offset + radius_addition),
@@ -56,12 +53,12 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, CAR
         circle_color = color
         circle_thickness = 3 
         if consecutive_occurrence >= args.consecutive:
-            circle_color = (0, 230, 0) 
+            circle_color = (0, 200, 0) 
             circle_thickness = 5
             
     # if the drawn bbox is just in the background
     else:
-        circle_color = (220, 220, 220)
+        circle_color = (200, 200, 200)
         circle_thickness = 1 
     
     # Finally drawing the circle around the face

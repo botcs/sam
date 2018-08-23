@@ -159,7 +159,8 @@ def send(bgrImg, AUTHORIZED_ID):
     #imgString = cv2.imencode('.jpg', bgrImg)[1].tostring()
     
     encoded, buffer = cv2.imencode('.jpg', bgrImg)
-    jpg_as_text = base64.b64encode(buffer)
+    # jpg_as_text = base64.b64encode(buffer)
+    jpg_as_text = buffer.tostring()
     
     client_data = {
         'bgrImg': jpg_as_text,
