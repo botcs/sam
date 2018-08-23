@@ -94,10 +94,14 @@ parser.add_argument('--port', type=int, default=5555, help='Where to send raw im
 #parser.add_argument('--process-every', type=int, default=1, help='process every Nth frame and discard others')
 parser.add_argument('--discard-older', type=int, default=500, help='discard frames older than N msec')
 parser.add_argument('--sql-buffer-size', type=int, default=50, help='Uploading buffered images to the database may take some time. Large size will occur slowdon less frequently but for more time. Small buffer size will trigger SQL sync more often, but the process will be shorter. Opt with regards to the actual bandwith.')
-
+parser.add_argument('--sql', action='store_true', help='if NOT set then no attempts will be made to sync with the DB')
 args = parser.parse_args()
-print('Args parsed:', args)
+
+#TODO: pretty print arguments
+#for k, v in args.items():
+#    print(k,':',v)
    
+print('arsg:', args)
 # PyTorch version check
 v3 = torch.__version__ == '0.3.1'
     
@@ -146,12 +150,13 @@ def initializeServer():
     RECOGNIZED_ID = None
     consecutive_occurrence = 0
     
-    
-    initDB()
+    if args.sql:    
+        initDB()
 
     
     KNOWN_DB = {'emb':Tensor(0, 128), 'id':[]}
-    CARD2NAME = getCard2Name()
+    if args.sql:
+        CARD2NAME = getCard2Name()
     if args.database is not None:
         KNOWN_DB = torch.load(args.database)
         
@@ -246,7 +251,7 @@ def recv():
         AUTHORIZED_ID = client_data['AUTHORIZED_ID']
         
         jpg_as_text = client_data['bgrImg']
-        #img = base64.b64decode(jpg_as_text)
+        img = base64.b64decode(jpg_as_text)
         img = jpg_as_text
         img = np.fromstring(img, dtype=np.uint8)
         bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
@@ -269,7 +274,6 @@ if __name__ == '__main__':
     if not v3: 
         torch.no_grad().__enter__()
     while IS_SERVER_RUNNING:
-        it += 1
         
         # Only flush when the server is idle
         #cardTracer.flush()
@@ -289,8 +293,9 @@ if __name__ == '__main__':
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
             
             if DLIB_MAIN_BBOX is None:
-                cardTracer.flush()
-                predTracer.flush()
+                if args.sql:
+                    cardTracer.flush()
+                    predTracer.flush()
 
                 threading.Thread(target=send).start()
                 continue
@@ -351,10 +356,9 @@ if __name__ == '__main__':
                 virtual=args.virtual)
 
             
-            
+            it += 1
             FPS = it / (time()-start_time)
             #print('\r\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS), end='')
-            
             # STEP 5: POLICY FOR OPENING THE TURNSPIKE
             # RECOGNIZED_ID has to be present for a certain amount of time
             # until it is validated by the policy, if RECOGNIZED_ID changes
@@ -396,7 +400,7 @@ if __name__ == '__main__':
             
             # STEP 8:
             # TODO: Async update of CARD2NAME
-            if it % 50 == 0:
+            if args.sql and it % 50 == 0:
                 CARD2NAME = getCard2Name()
             
             

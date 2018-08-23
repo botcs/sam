@@ -85,6 +85,7 @@ parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
 parser.add_argument('--server-address', default='tcp://localhost:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://198.159.190.163:5555"')
+parser.add_argument('--keep-every', type=int, default=1, help='Send every Nth image, discard others.')
 args = parser.parse_args()
 print('Args parsed:', args)
     
@@ -159,7 +160,7 @@ def send(bgrImg, AUTHORIZED_ID):
     #imgString = cv2.imencode('.jpg', bgrImg)[1].tostring()
     
     encoded, buffer = cv2.imencode('.jpg', bgrImg)
-    # jpg_as_text = base64.b64encode(buffer)
+    jpg_as_text = base64.b64encode(buffer)
     jpg_as_text = buffer.tostring()
     
     client_data = {
@@ -270,7 +271,7 @@ if __name__ == '__main__':
             # STEP 2: READ CARD                
             if not args.virtual:
                 CardData = pirate.readCardID(max_age=1000)
-                
+            
             if AUTHORIZED_ID is None:
                 # HERE COMES THE CARD ID
                 if args.virtual:
@@ -283,10 +284,11 @@ if __name__ == '__main__':
                         AUTHORIZED_ID = CardData[0]
                 
             # TODO: Send the frame and AUTHORIZED_ID to server
-            threading.Thread(
-                target=send, 
-                args=(bgrImg.copy(), AUTHORIZED_ID)
-            ).start()
+            if it % args.keep_every == 0:
+                threading.Thread(
+                    target=send, 
+                    args=(bgrImg.copy(), AUTHORIZED_ID)
+                ).start()
             
             # TODO: Receieve stats from server
             # - id_counter: sorted list of (card_id, #occurrence_in_query)

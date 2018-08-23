@@ -35,7 +35,7 @@ def drawBBox(bgrImg, bb, args, id_counter=None, consecutive_occurrence=None, CAR
     if id_counter is not None:
         percentage = id_counter[0][1]/args.k*100
         thickness = 2    
-        if CARD2NAME.get(shown_ID) is None:
+        if CARD2NAME.get(id_counter[0][0]) is None:
             color = (0, 0, 200)
             text = id_counter[0][0]
 
