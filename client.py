@@ -45,7 +45,6 @@ from utils import prepareOpenFace
 from utils import AlignDlib
 from utils import rect_to_bb
 from utils import db_query
-from utils import ITKGatePirate
 from utils import drawBBox, drawBanner
 from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
@@ -65,21 +64,7 @@ modelDir = os.path.join(fileDir, 'weights')
 parser = argparse.ArgumentParser()
 parser.add_argument('--embedding-weights', type=str, help='Path to embedding network weights',
                     default=os.path.join(modelDir, 'openface.pth'))
-parser.add_argument('--database', type=str, help='path to embedding->name database',
-                    default=os.path.join(modelDir, 'REALTIME-DB.tar'))
-parser.add_argument('--dlib-face-predictor', type=str, help='Path to dlib\'s face predictor.',
-                    default=os.path.join(modelDir, 'shape_predictor_68_face_landmarks.dat'))
-
-
-## Auth
-parser.add_argument('--consecutive', type=int, default=30,
-    help='How many frames is required to be authorized as the same person')
-parser.add_argument('--k', type=int, help='List top K results', default=100)
-parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=50)
-
-## Display
-parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region')
-parser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
+arser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
 parser.add_argument('--fullscreen', action='store_true', help='Enable Full Screen display. Only available if --display is used')
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
@@ -113,6 +98,7 @@ def initializeClient():
     idle_begin = -1
     
     if not args.virtual:
+        from utils import ITKGatePirate
         pirate = ITKGatePirate() 
         
     if args.display:
@@ -351,8 +337,3 @@ if __name__ == '__main__':
             break
 
     IS_CLIENT_RUNNING = False
-    # FINALLY: Save the learned representations
-    # torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
-    
-        
-            
