@@ -265,20 +265,50 @@ def recv():
     delay_time = (time() - message_ts)*1000 
     FPS = it / (time() - start_time)
     print('Receieved image #%010d and ID [%10s] with delay [%4.0f] msec, Avg. FPS = %3.1f'%
-        (it, AUTHORIZED_ID, delay_time, FPS))
+        (it, AUTHORIZED_ID, delay_time, fps_counter.ema_fps))
     return bgrImg, AUTHORIZED_ID, delay_time
 
+
+class FPSCounter():
+    def __init__(self):
+        self.start_time = time()
+        self.last_call = time()
+        self.prev_call = time()
+        self.frame_count = 0
+
+        self.ema_fps = None
+
+    def __call__(self):
+        self.frame_count += 1
+        self.prev_call = self.last_call
+        self.last_call = time()
+        self.update_ema()
+
+    def update_ema(self, alpha=0.1):
+        current_fps = 1 / (self.last_call - self.prev_call)
+
+        if self.ema_fps is None:
+            self.ema_fps = current_fps
+        
+        self.ema_fps = alpha * current_fps + (1-alpha) * self.ema_fps
+
+        
+
+
 if __name__ == '__main__':
+
     initializeServer()
     print('Starting service...')
     if not v3: 
         torch.no_grad().__enter__()
+
+    fps_counter = FPSCounter()
     while IS_SERVER_RUNNING:
         
         # Only flush when the server is idle
         #cardTracer.flush()
         #predTracer.flush()
-
+        fps_counter()
         try:
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
@@ -289,6 +319,9 @@ if __name__ == '__main__':
             if it % args.process_every != 0:
                 continue
             '''            
+             
+            it += 1
+            #FPS = it / (time()-start_time)
             DLIB_BOUNDING_BOXES = aligner.getAllFaceBoundingBoxes(bgrImg)
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
             
@@ -300,6 +333,8 @@ if __name__ == '__main__':
                 threading.Thread(target=send).start()
                 continue
 
+            
+            
             # STEP 2: PREPROCESS IMAGE
             rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
             img = rgbImg
@@ -355,9 +390,6 @@ if __name__ == '__main__':
                 KNOWN_DB=KNOWN_DB, 
                 virtual=args.virtual)
 
-            
-            it += 1
-            FPS = it / (time()-start_time)
             #print('\r\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS), end='')
             # STEP 5: POLICY FOR OPENING THE TURNSPIKE
             # RECOGNIZED_ID has to be present for a certain amount of time
