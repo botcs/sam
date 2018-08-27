@@ -64,7 +64,13 @@ modelDir = os.path.join(fileDir, 'weights')
 parser = argparse.ArgumentParser()
 parser.add_argument('--embedding-weights', type=str, help='Path to embedding network weights',
                     default=os.path.join(modelDir, 'openface.pth'))
-arser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
+## Display statistic used at server (TAKES NO EFFECT ON THE ACTUAL EVALUATION)
+parser.add_argument('--consecutive', type=int, default=30, 
+    help='TAKES NO EFFECT ON THE ACTUAL EVALUATION')
+parser.add_argument('--k', type=int, help='TAKES NO EFFECT ON THE ACTUAL EVALUATION', default=100)
+parser.add_argument('--threshold', type=int, help='TAKES NO EFFECT ON THE ACTUAL EVALUATION', default=50)
+
+parser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
 parser.add_argument('--fullscreen', action='store_true', help='Enable Full Screen display. Only available if --display is used')
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
@@ -146,7 +152,7 @@ def send(bgrImg, AUTHORIZED_ID):
     #imgString = cv2.imencode('.jpg', bgrImg)[1].tostring()
     
     encoded, buffer = cv2.imencode('.jpg', bgrImg)
-    jpg_as_text = base64.b64encode(buffer)
+    #jpg_as_text = base64.b64encode(buffer)
     jpg_as_text = buffer.tostring()
     
     client_data = {
