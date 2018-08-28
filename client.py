@@ -75,7 +75,7 @@ parser.add_argument('--fullscreen', action='store_true', help='Enable Full Scree
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
-parser.add_argument('--server-address', default='tcp://localhost:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://198.159.190.163:5555"')
+parser.add_argument('--server-address', default='tcp://10.3.19.208:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://10.3.19.208:5555"')
 parser.add_argument('--keep-every', type=int, default=1, help='Send every Nth image, discard others.')
 args = parser.parse_args()
 print('Args parsed:', args)
