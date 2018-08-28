@@ -224,7 +224,7 @@ def recv():
 
 def asyncRecvLoop():
     global current_timeout
-    while IS_CLIENT_RUNNING:
+    while IS_CLIENT_RUNNING and current_timeout < 100:
         try:
             recv()
             current_timeout = 0
@@ -258,7 +258,9 @@ if __name__ == '__main__':
             ret, bgrImg = cap.read()
             bgrImg = cv2.flip(bgrImg, 1)
             if not ret:
-                raise RuntimeError('Video capture was unsuccessful.')
+                print('Warning: Video capture was unsuccessful')
+                continue
+                #raise RuntimeError('Video capture was unsuccessful.')
                 
             # STEP 2: READ CARD                
             if not args.virtual:
