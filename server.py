@@ -259,7 +259,7 @@ def recv():
         AUTHORIZED_ID = client_data['AUTHORIZED_ID']
         
         jpg_as_text = client_data['bgrImg']
-        img = base64.b64decode(jpg_as_text)
+        #img = base64.b64decode(jpg_as_text)
         img = jpg_as_text
         img = np.fromstring(img, dtype=np.uint8)
         bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
@@ -284,7 +284,7 @@ class FPSCounter():
         self.prev_call = time()
         self.frame_count = 0
 
-        self.ema_fps = None
+        self.ema_fps = -1.
 
     def __call__(self):
         self.frame_count += 1
@@ -292,10 +292,10 @@ class FPSCounter():
         self.last_call = time()
         self.update_ema()
 
-    def update_ema(self, alpha=0.1):
+    def update_ema(self, alpha=0.05):
         current_fps = 1 / (self.last_call - self.prev_call)
 
-        if self.ema_fps is None:
+        if self.frame_count == 1:
             self.ema_fps = current_fps
         
         self.ema_fps = alpha * current_fps + (1-alpha) * self.ema_fps
@@ -316,7 +316,7 @@ if __name__ == '__main__':
         # Only flush when the server is idle
         #cardTracer.flush()
         #predTracer.flush()
-        fps_counter()
+
         try:
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
@@ -329,6 +329,7 @@ if __name__ == '__main__':
             '''            
              
             it += 1
+            fps_counter()
             #FPS = it / (time()-start_time)
             DLIB_BOUNDING_BOXES = aligner.getAllFaceBoundingBoxes(bgrImg)
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
@@ -453,7 +454,8 @@ if __name__ == '__main__':
         
     IS_SERVER_RUNNING = False
     # FINALLY: Save the learned representations
-    # torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
+    if not args.virtual:
+        torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
     
         
             
