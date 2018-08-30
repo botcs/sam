@@ -45,7 +45,6 @@ from utils import prepareOpenFace
 from utils import AlignDlib
 from utils import rect_to_bb
 from utils import db_query
-from utils import ITKGatePirate
 from utils import drawBBox, drawBanner
 from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
@@ -65,26 +64,18 @@ modelDir = os.path.join(fileDir, 'weights')
 parser = argparse.ArgumentParser()
 parser.add_argument('--embedding-weights', type=str, help='Path to embedding network weights',
                     default=os.path.join(modelDir, 'openface.pth'))
-parser.add_argument('--database', type=str, help='path to embedding->name database',
-                    default=os.path.join(modelDir, 'REALTIME-DB.tar'))
-parser.add_argument('--dlib-face-predictor', type=str, help='Path to dlib\'s face predictor.',
-                    default=os.path.join(modelDir, 'shape_predictor_68_face_landmarks.dat'))
+## Display statistic used at server (TAKES NO EFFECT ON THE ACTUAL EVALUATION)
+parser.add_argument('--consecutive', type=int, default=30, 
+    help='TAKES NO EFFECT ON THE ACTUAL EVALUATION')
+parser.add_argument('--k', type=int, help='TAKES NO EFFECT ON THE ACTUAL EVALUATION', default=100)
+parser.add_argument('--threshold', type=int, help='TAKES NO EFFECT ON THE ACTUAL EVALUATION', default=50)
 
-
-## Auth
-parser.add_argument('--consecutive', type=int, default=30,
-    help='How many frames is required to be authorized as the same person')
-parser.add_argument('--k', type=int, help='List top K results', default=100)
-parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=50)
-
-## Display
-parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region')
 parser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
 parser.add_argument('--fullscreen', action='store_true', help='Enable Full Screen display. Only available if --display is used')
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
-parser.add_argument('--server-address', default='tcp://localhost:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://198.159.190.163:5555"')
+parser.add_argument('--server-address', default='tcp://10.3.19.208:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://10.3.19.208:5555"')
 parser.add_argument('--keep-every', type=int, default=1, help='Send every Nth image, discard others.')
 args = parser.parse_args()
 print('Args parsed:', args)
@@ -113,6 +104,7 @@ def initializeClient():
     idle_begin = -1
     
     if not args.virtual:
+        from utils import ITKGatePirate
         pirate = ITKGatePirate() 
         
     if args.display:
@@ -160,7 +152,7 @@ def send(bgrImg, AUTHORIZED_ID):
     #imgString = cv2.imencode('.jpg', bgrImg)[1].tostring()
     
     encoded, buffer = cv2.imencode('.jpg', bgrImg)
-    jpg_as_text = base64.b64encode(buffer)
+    #jpg_as_text = base64.b64encode(buffer)
     jpg_as_text = buffer.tostring()
     
     client_data = {
@@ -232,7 +224,7 @@ def recv():
 
 def asyncRecvLoop():
     global current_timeout
-    while IS_CLIENT_RUNNING:
+    while IS_CLIENT_RUNNING and current_timeout < 100:
         try:
             recv()
             current_timeout = 0
@@ -266,7 +258,9 @@ if __name__ == '__main__':
             ret, bgrImg = cap.read()
             bgrImg = cv2.flip(bgrImg, 1)
             if not ret:
-                raise RuntimeError('Video capture was unsuccessful.')
+                print('Warning: Video capture was unsuccessful')
+                continue
+                #raise RuntimeError('Video capture was unsuccessful.')
                 
             # STEP 2: READ CARD                
             if not args.virtual:
@@ -351,8 +345,3 @@ if __name__ == '__main__':
             break
 
     IS_CLIENT_RUNNING = False
-    # FINALLY: Save the learned representations
-    # torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
-    
-        
-            
