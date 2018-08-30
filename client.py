@@ -6,16 +6,21 @@
 # argparse - pass arguments from the command line to the script becomes extremely useful 
 # pathlib - helps finding the containing directory
 import os
-from time import time, sleep
+from time import time
 import argparse
 import pathlib
 
 # base64 - helps encoding the image buffer to binary strings
 # json - data is sent through as binary strings, JSON helps serializing dicts
 # threading - required for receieving data asynchronously from the server
+# zmq - communication with the server
 import base64
 import json, pickle
 import threading
+import zmq
+# Required if socket is used in a thread
+import zmq.eventloop.ioloop
+zmq.eventloop.ioloop.install()
 
 ## Computer vision modules
 # cv2 - for capturing web-cam and displaying the live stream
@@ -171,6 +176,9 @@ def send(bgrImg, AUTHORIZED_ID):
     message = pickle.dumps(client_data)
     streamer.send(message)
         
+    finally:
+        pass
+        #lock.release()
     '''
     print('Sent image %15s and ID [%10s] at time: [%10d]'%
         (str(bgrImg.shape), AUTHORIZED_ID, int(time()*1000)))
@@ -196,6 +204,9 @@ def recv():
     global AUTHORIZED_ID
     global RECOGNIZED_ID
     global consecutive_occurrence
+    
+    lock = threading.RLock()
+    #lock.acquire()
 
     message = streamer.recv()
     if message is None:
@@ -226,6 +237,7 @@ def asyncRecvLoop():
         
         sleep(0.0001)
 	
+    client_socket.close()
     print('exiting async recv loop')
 
 
@@ -300,7 +312,7 @@ if __name__ == '__main__':
                         bottomright = (aligner.regionXmax, aligner.regionYmax)
                         cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
                     ''' 
-                    bgrImg = drawBanner(bgrImg, current_timeout=retries)
+                    bgrImg = drawBanner(bgrImg, current_timeout=current_timeout)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break     
