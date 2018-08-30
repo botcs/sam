@@ -13,7 +13,6 @@ import pathlib
 # base64 - helps encoding the image buffer to binary strings
 # json - data is sent through as binary strings, JSON helps serializing dicts
 # threading - required for receieving data asynchronously from the server
-import base64
 import json, pickle
 import threading
 
@@ -272,8 +271,12 @@ def recv():
         #lock.release()
     delay_time = (time() - message_ts)*1000 
     FPS = it / (time() - start_time)
-    print('Receieved image #%010d and ID [%10s] with delay [%4.0f] msec, Avg. FPS = %3.1f'%
-        (it, AUTHORIZED_ID, delay_time, fps_counter.ema_fps))
+    status_log = 'Receieved image'
+    status_log += ' #%010d' % it
+    status_log += ' and ID [%10s]' % AUTHORIZED_ID
+    status_log += ' with delay [%4.0f] msec' % delay_time
+    status_log += ' Avg. FPS = %3.1f' % fps_counter.ema_fps
+    print(status_log)
     return bgrImg, AUTHORIZED_ID, delay_time
 
 

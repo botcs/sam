@@ -98,7 +98,7 @@ def addbanner(img, bannerPath, concat=True):
     
 
 
-def drawBanner(img, id_counter=None, CARD2NAME=None, AUTHORIZED_ID=None, current_timeout=0):
+def drawBanner(img, id_counter=None, CARD2NAME=None, AUTHORIZED_ID=None, retries=0):
     '''
         Shows live statistics of the recognition algorithm
     '''
@@ -112,8 +112,8 @@ def drawBanner(img, id_counter=None, CARD2NAME=None, AUTHORIZED_ID=None, current
     else:
         img = addbanner(img, 'active-banner.png')
     
-    if current_timeout > 1:
-        text = 'Connecting to server... (%3d)'%current_timeout
+    if retries > 1:
+        text = 'Connecting to server... (%3d)'%retries
         cv2.putText(img, text, (30, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     fontScale=0.5, color=(0,0,0), 

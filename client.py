@@ -86,7 +86,6 @@ def initializeClient():
     global idle_begin
     global pirate
     global streamer
-    global retries
     
     # Initialize webcam before loading every other module
     cap = cv2.VideoCapture(args.cam)
@@ -110,15 +109,6 @@ def initializeClient():
             cv2.setWindowProperty(
                 'frame',cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
 
-    
-    '''
-    context = zmq.Context()
-    client_socket = context.socket(zmq.PAIR)
-    client_socket.setsockopt(zmq.LINGER, 100)
-    client_socket.connect(args.server_address)
-    client_socket.RCVTIMEO = 1000 # in milliseconds
-    retries = 0
-    '''
     address, port = args.server_address.split(':')
     port = int(port)
     # Discard older argument only specifies the maximum time that the
@@ -300,7 +290,7 @@ if __name__ == '__main__':
                         bottomright = (aligner.regionXmax, aligner.regionYmax)
                         cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
                     ''' 
-                    bgrImg = drawBanner(bgrImg, current_timeout=retries)
+                    bgrImg = drawBanner(bgrImg, retries=retries)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break
@@ -313,11 +303,15 @@ if __name__ == '__main__':
                 
                 # Draw the main bounding box
                 for BBOX in BOUNDING_BOXES:
-                    if BBOX == MAIN_BBOX:
-                        drawBBox(bgrImg, BBOX, args, id_counter, consecutive_occurrence, CARD2NAME)
-                    else:
-                        drawBBox(bgrImg, BBOX, args)
-                bgrImg = drawBanner(bgrImg, id_counter, CARD2NAME, AUTHORIZED_ID)
+                    if retries == 0:
+                        if BBOX == MAIN_BBOX:
+                            drawBBox(
+                                bgrImg, BBOX, args, id_counter, 
+                                consecutive_occurrence, CARD2NAME)
+                        else:
+                            drawBBox(bgrImg, BBOX, args)
+                        
+                bgrImg = drawBanner(bgrImg, id_counter, CARD2NAME, AUTHORIZED_ID, retries=retries)
                 cv2.imshow('frame', bgrImg)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
