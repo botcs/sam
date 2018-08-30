@@ -3,6 +3,7 @@ import struct
 import time
 import select
 import threading
+import warnings
 
 class Messenger(object):
     """
@@ -47,7 +48,7 @@ class Messenger(object):
             current_time = time.time()
             delay = current_time - msgtime
             if delay < 0:
-                raise RuntimeWarning('Delay time is negative (%3f msec), sender-receiever time.time() function may be out of sync'%delay)
+                warnings.warn('Delay time is negative (%3f sec), sender-receiever time.time() function may be out of sync'%delay, RuntimeWarning)
             if delay > self.discard_older:
                 return None
         
@@ -135,7 +136,6 @@ class StreamerAbstract(threading.Thread):
                       (self.retries, self.max_retries))
                 sock = self.connectSocket(listener)
                 print('Connection established: %s:%d'%sock_addr)
-                self.retries = 0
                 
                 messenger = Messenger(
                     sock, self.discard_older, self.only_consecutive)
@@ -160,6 +160,8 @@ class StreamerAbstract(threading.Thread):
                             msg = self.write_queue.pop(0)
                             lock.release()
                             messenger.send_msg(msg)
+
+                        self.retries = 0
                         
                     except (BrokenPipeError, ConnectionResetError) as e:
                         print('Connection broke up: %s:%d'%sock_addr,

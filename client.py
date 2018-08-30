@@ -99,7 +99,7 @@ def initializeClient():
     idle_begin = -1
     
     if not args.virtual:
-        from utils import ITKGatePirate
+        from utils.gatepirate import ITKGatePirate
         pirate = ITKGatePirate() 
         
     if args.display:
@@ -190,7 +190,7 @@ def recv():
     message = streamer.recv()
     if message is None:
         return
-    statistics = json.loads(message)
+    statistics = json.loads(message.decode())
 
     id_counter = statistics['id_counter']
     BOUNDING_BOXES = statistics['BOUNDING_BOXES']
