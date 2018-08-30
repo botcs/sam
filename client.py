@@ -6,21 +6,16 @@
 # argparse - pass arguments from the command line to the script becomes extremely useful 
 # pathlib - helps finding the containing directory
 import os
-from time import time
+from time import time, sleep
 import argparse
 import pathlib
 
 # base64 - helps encoding the image buffer to binary strings
 # json - data is sent through as binary strings, JSON helps serializing dicts
 # threading - required for receieving data asynchronously from the server
-# zmq - communication with the server
 import base64
 import json, pickle
 import threading
-import zmq
-# Required if socket is used in a thread
-import zmq.eventloop.ioloop
-zmq.eventloop.ioloop.install()
 
 ## Computer vision modules
 # cv2 - for capturing web-cam and displaying the live stream
@@ -49,6 +44,7 @@ from utils import drawBBox, drawBanner
 from utils import CardValidationTracer, PredictionTracer
 from utils import getCard2Name, initDB
 '''
+from utils.streamer import StreamerClient
 from client_utils.display import drawBBox, drawBanner
 
 # Knowing where the script is running can be really helpful for setting proper defaults
@@ -75,7 +71,7 @@ parser.add_argument('--fullscreen', action='store_true', help='Enable Full Scree
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
 parser.add_argument('--virtual', action='store_true', help='Disable card reader')
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
-parser.add_argument('--server-address', default='tcp://localhost:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://198.159.190.163:5555"')
+parser.add_argument('--server-address', default='localhost:5555', help='Where to send raw image and card reader data, and receive statistics from. Default: "tcp://198.159.190.163:5555"')
 parser.add_argument('--keep-every', type=int, default=1, help='Send every Nth image, discard others.')
 args = parser.parse_args()
 print('Args parsed:', args)
@@ -89,8 +85,8 @@ def initializeClient():
     global it
     global idle_begin
     global pirate
-    global client_socket
-    global current_timeout
+    global streamer
+    global retries
     
     # Initialize webcam before loading every other module
     cap = cv2.VideoCapture(args.cam)
@@ -115,13 +111,25 @@ def initializeClient():
                 'frame',cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
 
     
+    '''
     context = zmq.Context()
     client_socket = context.socket(zmq.PAIR)
     client_socket.setsockopt(zmq.LINGER, 100)
     client_socket.connect(args.server_address)
     client_socket.RCVTIMEO = 1000 # in milliseconds
-    current_timeout = 0
-
+    retries = 0
+    '''
+    address, port = args.server_address.split(':')
+    port = int(port)
+    # Discard older argument only specifies the maximum time that the
+    # streamer allows to receieve the message (i.e. deals with network latency)
+    # How much time is spent before the data can be read out 
+    # from the buffer is not affected
+    streamer = StreamerClient(
+        (address, port), 
+        discard_older=1, 
+        only_consecutive=True)
+        
     initializeClientVariables()
 
 
@@ -161,16 +169,8 @@ def send(bgrImg, AUTHORIZED_ID):
         'message_ts': time()
     }
     message = pickle.dumps(client_data)
-    lock = threading.RLock()
-    #lock.acquire()
-    try:
-        client_socket.send(message)
-    except RuntimeError as e:
-        print('CLIENT <send> ERROR: ', e)
+    streamer.send(message)
         
-    finally:
-        pass
-        #lock.release()
     '''
     print('Sent image %15s and ID [%10s] at time: [%10d]'%
         (str(bgrImg.shape), AUTHORIZED_ID, int(time()*1000)))
@@ -196,50 +196,36 @@ def recv():
     global AUTHORIZED_ID
     global RECOGNIZED_ID
     global consecutive_occurrence
-    
-    lock = threading.RLock()
-    #lock.acquire()
 
-    try:
-        message = client_socket.recv_string()
-        statistics = json.loads(message)
-    
-        id_counter = statistics['id_counter']
-        BOUNDING_BOXES = statistics['BOUNDING_BOXES']
-        MAIN_BBOX = statistics['MAIN_BBOX']
-        CARD2NAME = statistics['CARD2NAME']
-        OPEN_GATE = statistics['OPEN_GATE']
-        AUTHORIZED_ID = statistics['AUTHORIZED_ID']
-        RECOGNIZED_ID = statistics['RECOGNIZED_ID']
-        consecutive_occurrence = statistics['consecutive_occurrence']
-        
-    except RuntimeError as e:
-        print('CLIENT <recv> ERROR: ', e)
-    finally:
-        pass
-        #lock.release()
+    message = streamer.recv()
+    if message is None:
+        return
+    statistics = json.loads(message)
 
+    id_counter = statistics['id_counter']
+    BOUNDING_BOXES = statistics['BOUNDING_BOXES']
+    MAIN_BBOX = statistics['MAIN_BBOX']
+    CARD2NAME = statistics['CARD2NAME']
+    OPEN_GATE = statistics['OPEN_GATE']
+    AUTHORIZED_ID = statistics['AUTHORIZED_ID']
+    RECOGNIZED_ID = statistics['RECOGNIZED_ID']
+    consecutive_occurrence = statistics['consecutive_occurrence']
+      
     
 
 
 def asyncRecvLoop():
-    global current_timeout
+    global retries
     while IS_CLIENT_RUNNING:
         try:
             recv()
-            current_timeout = 0
-        except zmq.Again as e:
-            current_timeout += 1
-            print('CLIENT <recv> TIMEOUT, retries: [%5d]'%(
-                current_timeout))
-            initializeClientVariables()
-        except RuntimeError as e:
-            print('CLIENT <recv loop> ERROR: ', e)
+            retries = streamer.retries
         except KeyboardInterrupt:
             print('\nInterrupted manually')
             break
+        
+        sleep(0.0001)
 	
-    client_socket.close()
     print('exiting async recv loop')
 
 
@@ -314,7 +300,7 @@ if __name__ == '__main__':
                         bottomright = (aligner.regionXmax, aligner.regionYmax)
                         cv2.rectangle(bgrImg, topleft, bottomright, (255, 255, 255), 3)
                     ''' 
-                    bgrImg = drawBanner(bgrImg, current_timeout=current_timeout)
+                    bgrImg = drawBanner(bgrImg, current_timeout=retries)
                     cv2.imshow('frame', bgrImg)
                     if cv2.waitKey(10) & 0xFF == ord('q'):
                         break     

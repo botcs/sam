@@ -6,21 +6,16 @@
 # argparse - pass arguments from the command line to the script becomes extremely useful 
 # pathlib - helps finding the containing directory
 import os
-from time import time
+from time import time, sleep
 import argparse
 import pathlib
 
 # base64 - helps encoding the image buffer to binary strings
 # json - data is sent through as binary strings, JSON helps serializing dicts
 # threading - required for receieving data asynchronously from the server
-# zmq - communication with the server
 import base64
 import json, pickle
 import threading
-import zmq
-# Required if socket is used in a thread
-import zmq.eventloop.ioloop
-zmq.eventloop.ioloop.install()
 
 ## Computer vision modules
 # torch - for neural network and GPU accelerated processes
@@ -50,13 +45,11 @@ from torchvision.transforms import ToTensor
 # initDB - initialize the MySQL Database
 
 import utils
-from utils import prepareOpenFace
-from utils import AlignDlib
-from utils import rect_to_bb
-from utils import db_query
-from utils import CardValidationTracer, PredictionTracer
-from utils import getCard2Name, initDB
-
+from utils.openface import prepareOpenFace
+from utils.align_dlib import AlignDlib, rect_to_bb
+from utils.tracer import CardValidationTracer, PredictionTracer
+from utils.sqlrequest import db_query, getCard2Name, initDB
+from utils.streamer import StreamerServer
 
 # Knowing where the script is running can be really helpful for setting proper defaults
 containing_dir = str(pathlib.Path(__file__).resolve().parent)
@@ -92,7 +85,7 @@ parser.add_argument('--virtual', action='store_true', help='Disable card reader'
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
 parser.add_argument('--port', type=int, default=5555, help='Where to send raw image and card reader data, and receive statistics from. Default: 5555')
 #parser.add_argument('--process-every', type=int, default=1, help='process every Nth frame and discard others')
-parser.add_argument('--discard-older', type=int, default=500, help='discard frames older than N msec')
+parser.add_argument('--discard-older', type=int, default=100, help='discard frames older than N msec')
 parser.add_argument('--sql-buffer-size', type=int, default=50, help='Uploading buffered images to the database may take some time. Large size will occur slowdon less frequently but for more time. Small buffer size will trigger SQL sync more often, but the process will be shorter. Opt with regards to the actual bandwith.')
 parser.add_argument('--sql', action='store_true', help='if NOT set then no attempts will be made to sync with the DB')
 args = parser.parse_args()
@@ -110,7 +103,7 @@ def initializeServer():
     global start_time
     global it
     global pirate
-    global server_socket
+    global streamer
     
     # These will be sent to client
     global id_counter
@@ -137,9 +130,12 @@ def initializeServer():
     start_time = time()
     it = 0
     
+    '''
     context = zmq.Context()
     server_socket = context.socket(zmq.PAIR)
     server_socket.bind('tcp://*:%d'%args.port)
+    '''
+    
     
     id_counter = None
     DLIB_BOUNDING_BOXES = None
@@ -204,7 +200,16 @@ def initializeServer():
     # Cooldown counter for emitting the OPEN_GATE signal
     last_cardwrite = time()
     
-    
+    address = 'localhost'
+    port = args.port
+    # Discard older argument only specifies the maximum time that the
+    # streamer allows to receieve the message (i.e. deals with network latency)
+    # How much time is spent before the data can be read out 
+    # from the buffer is not affected
+    streamer = StreamerServer(
+        (address, port), 
+        discard_older=1, 
+        only_consecutive=True)
     
     
 def send():
@@ -231,7 +236,7 @@ def send():
     lock = threading.RLock()
     #lock.acquire()
     try:
-        server_socket.send_string(message)
+        streamer.send(message)
     except RuntimeError as e:
         print('SERVER <send> ERROR: ', e)
         
@@ -245,7 +250,10 @@ def recv():
     lock = threading.RLock()
     #lock.acquire()
     try:
-        message = server_socket.recv()
+        message = streamer.recv()
+        while message is None:        
+            message = streamer.recv()
+            sleep(.0001)
         client_data = pickle.loads(message)
         message_ts = client_data['message_ts']
         AUTHORIZED_ID = client_data['AUTHORIZED_ID']
