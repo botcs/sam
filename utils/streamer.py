@@ -163,7 +163,6 @@ class StreamerAbstract(threading.Thread):
                             lock.release()
                             messenger.send_msg(msg)
 
-                            self.retries = 0
                         
                     except (BrokenPipeError, ConnectionResetError) as e:
                         print('Connection broke up: %s:%d'%sock_addr,
