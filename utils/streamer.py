@@ -154,6 +154,8 @@ class StreamerAbstract(threading.Thread):
                             self.read_queue.append(msg)
                             lock.release()                    
                             
+                            self.retries = 0
+                            
                         if len(ready_to_write) == 1 and len(self.write_queue) > 0:
                             lock = threading.Lock()
                             lock.acquire()
@@ -161,7 +163,7 @@ class StreamerAbstract(threading.Thread):
                             lock.release()
                             messenger.send_msg(msg)
 
-                        self.retries = 0
+                            self.retries = 0
                         
                     except (BrokenPipeError, ConnectionResetError) as e:
                         print('Connection broke up: %s:%d'%sock_addr,
