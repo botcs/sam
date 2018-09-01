@@ -48,8 +48,9 @@ class Messenger(object):
             current_time = time.time()
             delay = current_time - msgtime
             if delay < 0:
-                warnings.warn('Delay time is negative (%3f sec), sender-receiever time.time() function may be out of sync'%delay, RuntimeWarning)
+                warnings.warn('Delay time is negative(%1.5f sec), time.time() function may be out of sync'%delay, RuntimeWarning)
             if delay > self.discard_older:
+                warnings.warn('Message could not be buffered because it exceeded delay time (%1.3f sec>=%1.1f sec)'%(delay, self.discard_older), RuntimeWarning)
                 return None
         
         if self.only_consecutive:

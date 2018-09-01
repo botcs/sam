@@ -70,23 +70,24 @@ parser.add_argument('--dlib-face-predictor', type=str, help='Path to dlib\'s fac
 
 
 ## Auth
-parser.add_argument('--consecutive', type=int, default=30, 
+parser.add_argument('--consecutive', type=int, default=5, 
     help='How many frames is required to be authorized as the same person')
 parser.add_argument('--k', type=int, help='List top K results', default=100)
 parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=50)
 
 ## Display
-parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region')
-parser.add_argument('--display', action='store_true', help='Use OpenCV to show predictions on X')
-parser.add_argument('--fullscreen', action='store_true', help='Enable Full Screen display. Only available if --display is used')
+parser.add_argument('--display', '-d', action='store_true', help='Use OpenCV to show predictions on X')
+parser.add_argument('--fullscreen', '-x', action='store_true', help='Enable Full Screen display. Only available if --display is used')
 parser.add_argument('--card-cooldown', type=int, help='Disable card writer for N secs after each attempt to write', default=3)
-parser.add_argument('--virtual', action='store_true', help='Disable card reader')
+parser.add_argument('--region', type=int, nargs=4, help='detect face only in [Xmin Ymin Width Height] region, deprecated as fuck')
+parser.add_argument('--virtual', action='store_true', help='Disable saving embedding database')
 parser.add_argument('--cam', type=int, default=0, help='Specify video stream /dev/video<cam> to use')
 parser.add_argument('--port', type=int, default=5555, help='Where to send raw image and card reader data, and receive statistics from. Default: 5555')
 #parser.add_argument('--process-every', type=int, default=1, help='process every Nth frame and discard others')
-parser.add_argument('--discard-older', type=int, default=100, help='discard frames older than N msec')
+parser.add_argument('--discard-older', '-D', type=int, default=200, help='discard frames older than N msec')
 parser.add_argument('--sql-buffer-size', type=int, default=50, help='Uploading buffered images to the database may take some time. Large size will occur slowdon less frequently but for more time. Small buffer size will trigger SQL sync more often, but the process will be shorter. Opt with regards to the actual bandwith.')
-parser.add_argument('--sql', action='store_true', help='if NOT set then no attempts will be made to sync with the DB')
+parser.add_argument('--sql', '-Q', action='store_true', help='if NOT set then no attempts will be made to sync with the DB')
+parser.add_argument('--verbose', '-v', action='store_true', help='Help benchmarking and debugging')
 args = parser.parse_args()
 
 #TODO: pretty print arguments
@@ -127,6 +128,7 @@ def initializeServer():
         
     IS_SERVER_RUNNING = True
     start_time = time()
+    compute_time = 0
     it = 0
     
     '''
@@ -207,11 +209,11 @@ def initializeServer():
     # from the buffer is not affected
     streamer = StreamerServer(
         (address, port), 
-        discard_older=1, 
+        discard_older=args.discard_older, 
         only_consecutive=True)
     
     
-def send():
+def send(**sendData):
     # Eliminate dlib dependency on client
     # and reduce message size
     BOUNDING_BOXES = [rect_to_bb(rect) for rect in DLIB_BOUNDING_BOXES]
@@ -219,6 +221,7 @@ def send():
         MAIN_BBOX = rect_to_bb(DLIB_MAIN_BBOX)
     else:
         MAIN_BBOX = None
+    '''
     sendData = {
         'id_counter': id_counter,
         'BOUNDING_BOXES': BOUNDING_BOXES,
@@ -230,53 +233,63 @@ def send():
         'consecutive_occurrence': consecutive_occurrence,
         'message_ts': time()
     }
+    '''
     message = json.dumps(sendData)
     
-    lock = threading.RLock()
-    #lock.acquire()
     try:
         streamer.send(message)
     except RuntimeError as e:
         print('SERVER <send> ERROR: ', e)
         
-    finally:
-        pass
-        #lock.release()
-
 
 
 def recv():
-    lock = threading.RLock()
-    #lock.acquire()
-    try:
-        message = streamer.recv()
-        while message is None:        
+    def recv_msg():
+        try:
             message = streamer.recv()
-            sleep(.0001)
-        client_data = pickle.loads(message)
-        message_ts = client_data['message_ts']
-        AUTHORIZED_ID = client_data['AUTHORIZED_ID']
+            while message is None:        
+                message = streamer.recv()
+                sleep(.0001)
+            client_data = pickle.loads(message)
+            message_ts = client_data['message_ts']
+            AUTHORIZED_ID = client_data['AUTHORIZED_ID']
+            
+            jpg_as_text = client_data['bgrImg']
+            #img = base64.b64decode(jpg_as_text)
+            img = jpg_as_text
+            img = np.fromstring(img, dtype=np.uint8)
+            bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
+
+            
+        except RuntimeError as e:
+            print('SERVER <recv> ERROR: ', e)
+        finally:
+            pass
+        delay_time = int((time() - message_ts)*1000)
+        return bgrImg, AUTHORIZED_ID, delay_time
+
+    while IS_SERVER_RUNNING:
+        bgrImg, AUTHORIZED_ID, delay_time = recv_msg()
         
-        jpg_as_text = client_data['bgrImg']
-        #img = base64.b64decode(jpg_as_text)
-        img = jpg_as_text
-        img = np.fromstring(img, dtype=np.uint8)
-        bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
+        keepImg = delay_time < args.discard_older
+        utilization = effective_fps.ema_fps / compute_fps.ema_fps
+        status_log = '+' if keepImg else 'o'
+        status_log += ' it: %05d' % it
+        status_log += ' ID: [%8s]' % AUTHORIZED_ID
+        status_log += ' delay: %4dms' % delay_time
+        status_log += ' FPS: %5.1f' % effective_fps.ema_fps
+        status_log += ' dtct: %5.1f' % face_detector_fps.ema_fps
+        status_log += ' reco: %5.1f' % face_recognition_fps.ema_fps
+        status_log += ' stat: %5.1f' % face_stat_fps.ema_fps
+        status_log += ' comp: %5.1f' % compute_fps.ema_fps
+        status_log += ' UTIL: %2.1f%%' % (utilization*100)
         
-        
-    except RuntimeError as e:
-        print('SERVER <recv> ERROR: ', e)
-    finally:
-        pass
-        #lock.release()
-    delay_time = (time() - message_ts)*1000 
-    FPS = it / (time() - start_time)
-    status_log = 'Receieved image'
-    status_log += ' #%010d' % it
-    status_log += ' and ID [%10s]' % AUTHORIZED_ID
-    status_log += ' with delay [%4.0f] msec' % delay_time
-    status_log += ' Avg. FPS = %3.1f' % fps_counter.ema_fps
-    print(status_log)
+        if args.verbose:
+            print(status_log)
+
+        if keepImg:
+            break
+    
     return bgrImg, AUTHORIZED_ID, delay_time
 
 
@@ -285,24 +298,31 @@ class FPSCounter():
         self.start_time = time()
         self.last_call = time()
         self.prev_call = time()
-        self.frame_count = 0
+        self.count = 0
 
         self.ema_fps = -1.
 
     def __call__(self):
-        self.frame_count += 1
-        self.prev_call = self.last_call
-        self.last_call = time()
-        self.update_ema()
+        self.tak()
 
     def update_ema(self, alpha=0.05):
         current_fps = 1 / (self.last_call - self.prev_call)
 
-        if self.frame_count == 1:
+        if self.count == 1:
             self.ema_fps = current_fps
         
         self.ema_fps = alpha * current_fps + (1-alpha) * self.ema_fps
 
+    def tik(self):
+        self.prev_call = self.last_call
+        self.last_call = time()
+        
+    def tak(self):
+        self.count += 1
+        self.prev_call = self.last_call
+        self.last_call = time()
+        self.update_ema()
+        return self.ema_fps
         
 
 
@@ -313,30 +333,35 @@ if __name__ == '__main__':
     if not v3: 
         torch.no_grad().__enter__()
 
-    fps_counter = FPSCounter()
+    effective_fps = FPSCounter()
+    face_detector_fps = FPSCounter()
+    face_recognition_fps = FPSCounter()
+    face_stat_fps = FPSCounter()
+    compute_fps = FPSCounter()
     while IS_SERVER_RUNNING:
-        
-        # Only flush when the server is idle
-        #cardTracer.flush()
-        #predTracer.flush()
 
         try:
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
             bgrImg, AUTHORIZED_ID, delay_time = recv()
-            if delay_time > args.discard_older:
-                continue
             '''
             if it % args.process_every != 0:
                 continue
             '''            
              
             it += 1
-            fps_counter()
-            #FPS = it / (time()-start_time)
+            effective_fps()
+            compute_fps.tik() # THROUGHPUT OF COMPUTER BEGIN (Regardless input)
+            # STEP 8:
+            # TODO: Async update of CARD2NAME
+            if args.sql and it % 50 == 0:
+                CARD2NAME = getCard2Name()
+                
+            
+            face_detector_fps.tik() # FACE DETECTION TIMER BEGIN
             DLIB_BOUNDING_BOXES = aligner.getAllFaceBoundingBoxes(bgrImg)
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
-            
+            face_detector_fps.tak() # FACE DETECTION TIMER END
             if DLIB_MAIN_BBOX is None:
                 if args.sql:
                     cardTracer.flush()
@@ -348,6 +373,7 @@ if __name__ == '__main__':
             
             
             # STEP 2: PREPROCESS IMAGE
+            face_recognition_fps.tik() # FACE RECOGNITION TIMER BEGIN
             rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
             img = rgbImg
             aligned_img = aligner.align(96, img, bb=DLIB_MAIN_BBOX)            
@@ -361,13 +387,16 @@ if __name__ == '__main__':
                     x = torch.autograd.Variable(x, volatile=True, requires_grad=False) # LEGACY LINE
             
             # STEP 3: EMBEDD IMAGE
+            #face_recognition_fps.tik() # FACE RECOGNITION TIMER BEGIN
             inference_start = time()
             embedding128 = net(x)[0]
             if v3:
                 embedding128 = embedding128.data # LEGACY LINE
             inference_time = time() - inference_start            
-
+            face_recognition_fps.tak() # FACE RECOGNITION TIMER END
+            
             # STEP 4: COMPARE TO REGISTERED EMBEDDINGS
+            face_stat_fps.tik() # FACE STATISTICS TIMER BEGIN
             if len(KNOWN_DB['emb']) > 0:
                 topk_start = time()
                 distances = pdist(KNOWN_DB['emb'], embedding128.expand_as(KNOWN_DB['emb']))
@@ -402,7 +431,6 @@ if __name__ == '__main__':
                 KNOWN_DB=KNOWN_DB, 
                 virtual=args.virtual)
 
-            #print('\r\tEmbedding network inference time: %1.4f sec, FPS=%2.2f' % (inference_time, FPS), end='')
             # STEP 5: POLICY FOR OPENING THE TURNSPIKE
             # RECOGNIZED_ID has to be present for a certain amount of time
             # until it is validated by the policy, if RECOGNIZED_ID changes
@@ -439,14 +467,9 @@ if __name__ == '__main__':
                 elif readyToEmulate:
                     print('Would open, but ID is not registered', RECOGNIZED_ID)
                     last_cardwrite = time()
-            
-            
-            
-            # STEP 8:
-            # TODO: Async update of CARD2NAME
-            if args.sql and it % 50 == 0:
-                CARD2NAME = getCard2Name()
-            
+                    
+            face_stat_fps.tak() # FACE STATISTICS TIMER END
+            compute_fps.tak() # COMPUTE TIME END
             
             # STEP N:
             threading.Thread(target=send).start()
@@ -458,7 +481,7 @@ if __name__ == '__main__':
     IS_SERVER_RUNNING = False
     # FINALLY: Save the learned representations
     if not args.virtual:
-        torch.save(KNOWN_DB, os.path.join(modelDir, 'REALTIME-DB.tar'))
+        torch.save(KNOWN_DB, args.database)
     
         
             
