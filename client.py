@@ -267,12 +267,14 @@ if __name__ == '__main__':
             # - AUTHORIZED_ID: if tracker can trace ID it will be used
             # - RECOGNIZED_ID: final suggestion of the face recog. service
             # - consecutive_occurrence: # of times RECOGNIZED_ID being the top1
-            
-            if OPEN_GATE:
-                print('OPEN:', CARD2NAME[RECOGNIZED_ID], RECOGNIZED_ID, time())
-                if not args.virtual:
-                    pirate.emulateCardID(RECOGNIZED_ID)
 
+            try:
+                if OPEN_GATE:
+                    print('OPEN:', CARD2NAME[RECOGNIZED_ID], RECOGNIZED_ID, time())
+                    if not args.virtual:
+                        pirate.emulateCardID(RECOGNIZED_ID)
+            except KeyError as e:
+                print('Catched OPEN error:', e)
 
             if MAIN_BBOX is None:
                 if idle_begin < 0: 
