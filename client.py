@@ -61,7 +61,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--embedding-weights', type=str, help='Path to embedding network weights',
                     default=os.path.join(modelDir, 'openface.pth'))
 ## Display statistic used at server (TAKES NO EFFECT ON THE ACTUAL EVALUATION)
-parser.add_argument('--consecutive', type=int, default=30, 
+parser.add_argument('--consecutive', type=int, default=5, 
     help='TAKES NO EFFECT ON THE ACTUAL EVALUATION')
 parser.add_argument('--k', type=int, help='TAKES NO EFFECT ON THE ACTUAL EVALUATION', default=100)
 parser.add_argument('--threshold', type=int, help='TAKES NO EFFECT ON THE ACTUAL EVALUATION', default=50)
@@ -132,6 +132,7 @@ def initializeClientVariables():
     global OPEN_GATE
     global AUTHORIZED_ID
     global RECOGNIZED_ID
+    global TRACED_ID
     global consecutive_occurrence
     
     
@@ -142,6 +143,7 @@ def initializeClientVariables():
     OPEN_GATE = False
     AUTHORIZED_ID = None
     RECOGNIZED_ID = None
+    TRACED_ID = None
     consecutive_occurrence = 0
     
     
@@ -183,13 +185,14 @@ def recv():
     global MAIN_BBOX
     global CARD2NAME
     global OPEN_GATE
-    global AUTHORIZED_ID
+    global TRACED_ID
     global RECOGNIZED_ID
     global consecutive_occurrence
-
+    
     message = streamer.recv()
     if message is None:
         return
+    
     statistics = json.loads(message.decode())
 
     id_counter = statistics['id_counter']
@@ -197,11 +200,14 @@ def recv():
     MAIN_BBOX = statistics['MAIN_BBOX']
     CARD2NAME = statistics['CARD2NAME']
     OPEN_GATE = statistics['OPEN_GATE']
-    AUTHORIZED_ID = statistics['AUTHORIZED_ID']
+    TRACED_ID = statistics['TRACED_ID']
     RECOGNIZED_ID = statistics['RECOGNIZED_ID']
     consecutive_occurrence = statistics['consecutive_occurrence']
-      
     
+    '''
+    return id_counter, BOUNDING_BOXES, MAIN_BBOX, CARD2NAME, OPEN_GATE,\
+        AUTHORIZED_ID, RECOGNIZED_ID, consecutive_occurrence
+    '''
 
 
 def asyncRecvLoop():
@@ -239,22 +245,26 @@ if __name__ == '__main__':
             # STEP 2: READ CARD                
             if not args.virtual:
                 CardData = pirate.readCardID(max_age=1000)
-            
-            if AUTHORIZED_ID is None:
-                # HERE COMES THE CARD ID
-                if args.virtual:
-                    # USE KEY PRESS AS AUTHORIZATION, ID WILL BE THE CHARACTER PRESSED
-                    pressedKeyCode = cv2.waitKey(10)
-                    if pressedKeyCode != -1:
-                        AUTHORIZED_ID = chr(pressedKeyCode & 255)
+
+            recv()
+
+            # if AUTHORIZED_ID is None:
+            # HERE COMES THE CARD ID
+            if args.virtual:
+                # USE KEY PRESS AS AUTHORIZATION, ID WILL BE THE CHARACTER PRESSED
+                pressedKeyCode = cv2.waitKey(10)
+                if pressedKeyCode != -1:
+                    AUTHORIZED_ID = chr(pressedKeyCode & 255)
+            else:
+                if len(CardData) == 4:                    
+                    AUTHORIZED_ID = CardData[0]
                 else:
-                    if len(CardData) == 4:                    
-                        AUTHORIZED_ID = CardData[0]
-                
+                    AUTHORIZED_ID = None
+
             # TODO: Send the frame and AUTHORIZED_ID to server
             if it % args.keep_every == 0:
                 threading.Thread(
-                    target=send, 
+                    target=send,
                     args=(bgrImg.copy(), AUTHORIZED_ID)
                 ).start()
             
@@ -268,14 +278,7 @@ if __name__ == '__main__':
             # - RECOGNIZED_ID: final suggestion of the face recog. service
             # - consecutive_occurrence: # of times RECOGNIZED_ID being the top1
 
-            try:
-                if OPEN_GATE:
-                    print('OPEN:', CARD2NAME[RECOGNIZED_ID], RECOGNIZED_ID, time())
-                    if not args.virtual:
-                        pirate.emulateCardID(RECOGNIZED_ID)
-            except KeyError as e:
-                print('Catched OPEN error:', e)
-
+            
             if MAIN_BBOX is None:
                 if idle_begin < 0: 
                     idle_begin = time()
@@ -300,6 +303,15 @@ if __name__ == '__main__':
                 continue                
             idle_begin = -1
 
+            try:
+                if OPEN_GATE:
+                    print('OPEN:', CARD2NAME[RECOGNIZED_ID], RECOGNIZED_ID, time())
+                    if not args.virtual:
+                        pirate.emulateCardID(RECOGNIZED_ID)
+            except KeyError as e:
+                print('Catched OPEN error:', e)
+
+
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES
             if args.display:
                 
@@ -313,7 +325,7 @@ if __name__ == '__main__':
                         else:
                             drawBBox(bgrImg, BBOX, args)
                         
-                bgrImg = drawBanner(bgrImg, id_counter, CARD2NAME, AUTHORIZED_ID, retries=retries)
+                bgrImg = drawBanner(bgrImg, id_counter, CARD2NAME, TRACED_ID, retries=retries)
                 cv2.imshow('frame', bgrImg)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
