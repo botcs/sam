@@ -85,7 +85,7 @@ parser.add_argument('--cam', type=int, default=0, help='Specify video stream /de
 parser.add_argument('--port', type=int, default=5555, help='Where to send raw image and card reader data, and receive statistics from. Default: 5555')
 #parser.add_argument('--process-every', type=int, default=1, help='process every Nth frame and discard others')
 parser.add_argument('--discard-older', '-D', type=int, default=200, help='discard frames older than N msec')
-parser.add_argument('--sql-buffer-size', type=int, default=50, help='Uploading buffered images to the database may take some time. Large size will occur slowdon less frequently but for more time. Small buffer size will trigger SQL sync more often, but the process will be shorter. Opt with regards to the actual bandwith.')
+parser.add_argument('--sql-buffer-size', type=int, default=10, help='Uploading buffered images to the database may take some time. Large size will occur slowdon less frequently but for more time. Small buffer size will trigger SQL sync more often, but the process will be shorter. Opt with regards to the actual bandwith.')
 parser.add_argument('--sql', '-Q', action='store_true', help='if NOT set then no attempts will be made to sync with the DB')
 parser.add_argument('--verbose', '-v', action='store_true', help='Help benchmarking and debugging')
 args = parser.parse_args()
@@ -213,14 +213,9 @@ def initializeServer():
         only_consecutive=True)
     
     
-def send(**sendData):
+def send(sendData):
     # Eliminate dlib dependency on client
     # and reduce message size
-    BOUNDING_BOXES = [rect_to_bb(rect) for rect in DLIB_BOUNDING_BOXES]
-    if DLIB_MAIN_BBOX is not None:
-        MAIN_BBOX = rect_to_bb(DLIB_MAIN_BBOX)
-    else:
-        MAIN_BBOX = None
     '''
     sendData = {
         'id_counter': id_counter,
@@ -271,7 +266,7 @@ def recv():
     while IS_SERVER_RUNNING:
         bgrImg, AUTHORIZED_ID, delay_time = recv_msg()
         
-        keepImg = delay_time < args.discard_older
+        keepImg = delay_time < args.discard_older or AUTHORIZED_ID is not None
         utilization = effective_fps.ema_fps / compute_fps.ema_fps
         status_log = '+' if keepImg else 'o'
         status_log += ' it: %05d' % it
@@ -314,7 +309,6 @@ class FPSCounter():
         self.ema_fps = alpha * current_fps + (1-alpha) * self.ema_fps
 
     def tik(self):
-        self.prev_call = self.last_call
         self.last_call = time()
         
     def tak(self):
@@ -341,6 +335,7 @@ if __name__ == '__main__':
     while IS_SERVER_RUNNING:
 
         try:
+        
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
             bgrImg, AUTHORIZED_ID, delay_time = recv()
@@ -358,17 +353,39 @@ if __name__ == '__main__':
                 CARD2NAME = getCard2Name()
                 
             
+            
+            
             face_detector_fps.tik() # FACE DETECTION TIMER BEGIN
             DLIB_BOUNDING_BOXES = aligner.getAllFaceBoundingBoxes(bgrImg)
             DLIB_MAIN_BBOX = aligner.extractLargestBoundingBox(DLIB_BOUNDING_BOXES)
             face_detector_fps.tak() # FACE DETECTION TIMER END
+            
+            # STEP N:
+            BOUNDING_BOXES = [rect_to_bb(rect) for rect in DLIB_BOUNDING_BOXES]
+            if DLIB_MAIN_BBOX is not None:
+                MAIN_BBOX = rect_to_bb(DLIB_MAIN_BBOX)
+            else:
+                MAIN_BBOX = None
+            sendData = {
+                'id_counter': id_counter,
+                'BOUNDING_BOXES': BOUNDING_BOXES,
+                'MAIN_BBOX': MAIN_BBOX,
+                'CARD2NAME': CARD2NAME,
+                'OPEN_GATE': OPEN_GATE,
+                'TRACED_ID': cardTracer.traced_id,
+                'RECOGNIZED_ID': RECOGNIZED_ID,
+                'consecutive_occurrence': consecutive_occurrence,
+                'message_ts': time()
+            }
+            threading.Thread(target=send, args=[sendData]).start()
+            
             if DLIB_MAIN_BBOX is None:
                 if args.sql:
                     cardTracer.flush()
                     predTracer.flush()
 
-                threading.Thread(target=send).start()
                 continue
+                
 
             
             
@@ -423,14 +440,14 @@ if __name__ == '__main__':
                 id_counter = [('<UNK>', 100)]
 
             # STEP 6: TRACKING:
-            AUTHORIZED_ID, KNOWN_DB = cardTracer.track(
+            
+            KNOWN_DB = cardTracer.track(
                 bgrImg=bgrImg.copy(), 
                 mainBB=DLIB_MAIN_BBOX, 
                 embedding128=embedding128, 
                 AUTHORIZED_ID=AUTHORIZED_ID, 
                 KNOWN_DB=KNOWN_DB, 
                 virtual=args.virtual)
-
             # STEP 5: POLICY FOR OPENING THE TURNSPIKE
             # RECOGNIZED_ID has to be present for a certain amount of time
             # until it is validated by the policy, if RECOGNIZED_ID changes
@@ -471,8 +488,6 @@ if __name__ == '__main__':
             face_stat_fps.tak() # FACE STATISTICS TIMER END
             compute_fps.tak() # COMPUTE TIME END
             
-            # STEP N:
-            threading.Thread(target=send).start()
 
         except KeyboardInterrupt:
             print('\nInterrupted manually')

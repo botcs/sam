@@ -17,11 +17,12 @@ class Tracer:
         When tracing session dies -> bbox x coord jumps further than treshold then
          assign all previously unassigned 
     '''
-    def __init__(self, x_displacement_treshold=100, SQLBufferSize=5):
+    def __init__(self, x_displacement_treshold=40, SQLBufferSize=5):
         self.treshold = x_displacement_treshold
         self.last_xmin = None
         self.bbox_distances = [0]
         self.uploader = AsyncSQLUploader(SQLBufferSize)
+        self.traced_id = None
         self.initCache()
                 
     def initCache(self):
@@ -54,14 +55,15 @@ class CardValidationTracer(Tracer):
         
         if self.bbox_distances[-1] < self.treshold:
             
-            if AUTHORIZED_ID is None:
+            if AUTHORIZED_ID is None and self.traced_id is None:
                 # BEGIN CACHE-ING UNKNOWN SAMPLES
                 self.cached_embeddings = torch.cat([self.cached_embeddings, embedding128])
                 self.cached_fullframes.append(bgrImg)
                 self.cached_bboxes.append((xmin, ymin, xmax, ymax))
                 self.cached_times.append(time.time())
             else:
-                if len(self.cached_embeddings) > 0:
+                if self.traced_id is None:            
+                    self.traced_id = AUTHORIZED_ID
                     print('RETROGRADE ASSIGNMENT: "%s" of %d images'%(AUTHORIZED_ID, len(self.cached_embeddings)))
                     KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], self.cached_embeddings])
                     KNOWN_DB['id'].extend(
@@ -76,23 +78,23 @@ class CardValidationTracer(Tracer):
                         
                     self.initCache()
                 else:
-                    #print('ONLINE ASSIGNMENT: "%s"'%AUTHORIZED_ID)
+                    #print('TRACED ASSIGNMENT: "%s"'%self.traced_id)
                     KNOWN_DB['emb'] = torch.cat([KNOWN_DB['emb'], embedding128])
-                    KNOWN_DB['id'].append(AUTHORIZED_ID)
+                    KNOWN_DB['id'].append(self.traced_id)
                     if True:#not virtual:
                         t = time.time()
                         self.uploader.add_single(
-                            bgrImg, t, AUTHORIZED_ID, (xmin, ymin, xmax, ymax))
+                            bgrImg, t, self.traced_id, (xmin, ymin, xmax, ymax))
 
                         with open('async-time-plot.txt', 'a') as f:
                             f.write('%1.9f\n'%(time.time()-t))
                 
         else: 
             self.initCache()
-            AUTHORIZED_ID = None
+            self.traced_id = None
         
         
-        return AUTHORIZED_ID, KNOWN_DB
+        return KNOWN_DB
         
         
         
