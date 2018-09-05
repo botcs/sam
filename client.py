@@ -6,14 +6,13 @@
 # argparse - pass arguments from the command line to the script becomes extremely useful 
 # pathlib - helps finding the containing directory
 import os
-from time import time, sleep
+from time import time, sleep, ctime
 import argparse
 import pathlib
 
 # base64 - helps encoding the image buffer to binary strings
 # json - data is sent through as binary strings, JSON helps serializing dicts
 # threading - required for receieving data asynchronously from the server
-import base64
 import json, pickle
 import threading
 
@@ -137,7 +136,7 @@ def initializeClientVariables():
     
     
     id_counter = None
-    BOUNDING_BOXES = None
+    BOUNDING_BOXES = []
     MAIN_BBOX = None
     CARD2NAME = {}
     OPEN_GATE = False
@@ -212,7 +211,7 @@ def recv():
 
 def asyncRecvLoop():
     global retries
-    while IS_CLIENT_RUNNING:
+    while IS_CLIENT_RUNNING and streamer.running:
         try:
             recv()
             retries = streamer.retries
@@ -230,7 +229,7 @@ if __name__ == '__main__':
     initializeClient()
     recvThread = threading.Thread(name='<recv loop thread>', target=asyncRecvLoop)
     recvThread.start()
-    print('Begin capture')
+    print('Begin capture...', ctime())
     while IS_CLIENT_RUNNING:
         it += 1
         
@@ -250,6 +249,7 @@ if __name__ == '__main__':
 
             # if AUTHORIZED_ID is None:
             # HERE COMES THE CARD ID
+            AUTHORIZED_ID = None
             if args.virtual:
                 # USE KEY PRESS AS AUTHORIZATION, ID WILL BE THE CHARACTER PRESSED
                 pressedKeyCode = cv2.waitKey(10)
@@ -258,9 +258,10 @@ if __name__ == '__main__':
             else:
                 if len(CardData) == 4:                    
                     AUTHORIZED_ID = CardData[0]
-                else:
-                    AUTHORIZED_ID = None
-
+            if AUTHORIZED_ID is not None:
+                NAME_ID = CARD2NAME.get(AUTHORIZED_ID)
+                NAME_ID = NAME_ID if NAME_ID is not None else AUTHORIZED_ID
+                print('READ:\t', AUTHORIZED_ID, ctime())
             # TODO: Send the frame and AUTHORIZED_ID to server
             if it % args.keep_every == 0:
                 threading.Thread(
@@ -277,8 +278,6 @@ if __name__ == '__main__':
             # - AUTHORIZED_ID: if tracker can trace ID it will be used
             # - RECOGNIZED_ID: final suggestion of the face recog. service
             # - consecutive_occurrence: # of times RECOGNIZED_ID being the top1
-
-            
             if MAIN_BBOX is None:
                 if idle_begin < 0: 
                     idle_begin = time()
@@ -305,11 +304,24 @@ if __name__ == '__main__':
 
             try:
                 if OPEN_GATE:
-                    print('OPEN:', CARD2NAME[RECOGNIZED_ID], RECOGNIZED_ID, time())
                     if not args.virtual:
                         pirate.emulateCardID(RECOGNIZED_ID)
+                        
+                    NAME_ID = CARD2NAME.get(RECOGNIZED_ID)
+                    NAME_ID = NAME_ID if NAME_ID is not None else AUTHORIZED_ID
+                    print('WRITE:\t', NAME_ID, ctime())
             except KeyError as e:
                 print('Catched OPEN error:', e)
+                print('LISTING CLIENT VARIABLES...')
+                print(id_counter)
+                print(BOUNDING_BOXES)
+                print(MAIN_BBOX)
+                print(CARD2NAME)
+                print(OPEN_GATE)
+                print(TRACED_ID)
+                print(RECOGNIZED_ID)
+                print(consecutive_occurrence)
+                initializeClientVariables()
 
 
             # STEP 7: IF X IS AVAILABLE THEN SHOW FACE BOXES
