@@ -98,6 +98,19 @@ print('arsg:', args)
 # PyTorch version check
 v3 = torch.__version__ == '0.3.1'
     
+def loadEmbeddingDB():
+    global KNOWN_DB
+    if args.database is not None:
+        KNOWN_DB = torch.load(args.database)
+        
+        # Torch 0.3.1 legacy stuff
+        if v3:
+            if isinstance(KNOWN_DB['emb'], torch.autograd.Variable): # LEGACY LINE
+                KNOWN_DB['emb'] = KNOWN_DB['emb'].data # LEGACY LINE
+        print('Updated embedding database from: %10s'%args.database, '%5d samples' % len(KNOWN_DB['emb']))  
+    
+    
+    
 def initializeServer():
     global IS_SERVER_RUNNING
     global start_time
@@ -152,18 +165,11 @@ def initializeServer():
 
     
     KNOWN_DB = {'emb':Tensor(0, 128), 'id':[]}
+    loadEmbeddingDB()
     if args.sql:
         CARD2NAME = getCard2Name()
-    if args.database is not None:
-        KNOWN_DB = torch.load(args.database)
         
-        # Torch 0.3.1 legacy stuff
-        if v3:
-            if isinstance(KNOWN_DB['emb'], torch.autograd.Variable): # LEGACY LINE
-                KNOWN_DB['emb'] = KNOWN_DB['emb'].data # LEGACY LINE
-        
-            
-    print('Size of database: %5d samples' % len(KNOWN_DB['emb']))     
+       
     net = prepareOpenFace()
     net = net.eval()
     net.load_state_dict(torch.load(args.embedding_weights))
@@ -263,7 +269,7 @@ def recv():
         delay_time = int((time() - message_ts)*1000)
         return bgrImg, AUTHORIZED_ID, delay_time
 
-    while IS_SERVER_RUNNING:
+    while IS_SERVER_RUNNING and streamer.running:
         bgrImg, AUTHORIZED_ID, delay_time = recv_msg()
         
         keepImg = delay_time < args.discard_older or AUTHORIZED_ID is not None
@@ -319,6 +325,7 @@ class FPSCounter():
         return self.ema_fps
         
 
+        
 
 if __name__ == '__main__':
 
@@ -335,6 +342,8 @@ if __name__ == '__main__':
     while IS_SERVER_RUNNING:
 
         try:
+            
+            
         
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
@@ -349,7 +358,7 @@ if __name__ == '__main__':
             compute_fps.tik() # THROUGHPUT OF COMPUTER BEGIN (Regardless input)
             # STEP 8:
             # TODO: Async update of CARD2NAME
-            if args.sql and it % 50 == 0:
+            if args.sql and it % 70 == 0:
                 CARD2NAME = getCard2Name()
                 
             
@@ -380,10 +389,14 @@ if __name__ == '__main__':
             threading.Thread(target=send, args=[sendData]).start()
             
             if DLIB_MAIN_BBOX is None:
+                if it % 1000 == 0:
+                    loadEmbeddingDB()
+                
                 if args.sql:
                     cardTracer.flush()
                     predTracer.flush()
-
+                
+                compute_fps.tak() # COMPUTE TIME END
                 continue
                 
 
@@ -405,25 +418,20 @@ if __name__ == '__main__':
             
             # STEP 3: EMBEDD IMAGE
             #face_recognition_fps.tik() # FACE RECOGNITION TIMER BEGIN
-            inference_start = time()
             embedding128 = net(x)[0]
             if v3:
-                embedding128 = embedding128.data # LEGACY LINE
-            inference_time = time() - inference_start            
+                embedding128 = embedding128.data # LEGACY LINE    
             face_recognition_fps.tak() # FACE RECOGNITION TIMER END
             
             # STEP 4: COMPARE TO REGISTERED EMBEDDINGS
             face_stat_fps.tik() # FACE STATISTICS TIMER BEGIN
             if len(KNOWN_DB['emb']) > 0:
-                topk_start = time()
                 distances = pdist(KNOWN_DB['emb'], embedding128.expand_as(KNOWN_DB['emb']))
                 distances.squeeze_()
                 sorted_distances, idxs = torch.sort(distances)
                 sorted_distances = sorted_distances[:args.k]
                 idxs = idxs[:args.k]
-                topk_time = time() - topk_start
                 
-                count_start = time()
                 id_counter = {}
                 for idx in idxs:
                     n = KNOWN_DB['id'][idx]
@@ -435,7 +443,6 @@ if __name__ == '__main__':
                     list(id_counter.items()), 
                     key=lambda x: x[1], reverse=True)[:args.k]
                     
-                count_time = time() - count_start
             else:
                 id_counter = [('<UNK>', 100)]
 
@@ -468,11 +475,11 @@ if __name__ == '__main__':
                 consecutive_occurrence = 0
                 
             # The candidate person is RECOGNIZED
+            OPEN_GATE = False
             if consecutive_occurrence >= args.consecutive:
                 readyToEmulate = (time() - last_cardwrite) > args.card_cooldown
                 name_id = CARD2NAME.get(RECOGNIZED_ID)
                 
-                OPEN_GATE = False
                 if name_id is not None:
                     predTracer.addPrediction(bgrImg.copy(), DLIB_MAIN_BBOX, RECOGNIZED_ID)
                     if readyToEmulate:
