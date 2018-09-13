@@ -258,10 +258,11 @@ if __name__ == '__main__':
             else:
                 if len(CardData) == 4:                    
                     AUTHORIZED_ID = CardData[0]
+
             if AUTHORIZED_ID is not None:
                 NAME_ID = CARD2NAME.get(AUTHORIZED_ID)
                 NAME_ID = NAME_ID if NAME_ID is not None else AUTHORIZED_ID
-                print('READ:\t', AUTHORIZED_ID, ctime())
+                print('READ:\t', NAME_ID, ctime())
             # TODO: Send the frame and AUTHORIZED_ID to server
             if it % args.keep_every == 0:
                 threading.Thread(
