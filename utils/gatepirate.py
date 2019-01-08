@@ -27,7 +27,7 @@ BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
 class ITKGatePirate():
-    def __init__(self, port='auto', baudrate=9600, pmode='daemon'):
+    def __init__(self, port='auto', pmode='daemon'):
         
         initDB()    
         if port == 'auto':
@@ -36,18 +36,17 @@ class ITKGatePirate():
         else:
             self.port = port
 
-        self.baudrate = baudrate
-        self.channel_number = 1
+        self.baudrate = 9600
+        self.channel_number = 2
         self.valid_channels = [chr(i) for i in range(ord('A'),ord('A')+self.channel_number)]
         self.sertimeout = 0
         self.reset_command = 'R'
-        self.get_led_command = 'L'
         self.log_file_name = 'card_id_log.txt'
         self._mode = pmode
 
         if self._mode == 'serial':
             try:
-                self.ser = serial.Serial(self.port, self.baudrate, timeout=self.sertimeout)
+                self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, parity=serial.PARITY_EVEN , timeout=self.sertimeout)
             except serial.serialutil.SerialException as e:
                 print(RED+'Error! No serial device or port is locked!'+NO)
         elif self._mode == 'daemon':
@@ -151,11 +150,9 @@ class ITKGatePirate():
                         emf = open(os.path.join(base_dir, 'emulate.txt'), 'r')
                         a = emf.read().splitlines()
                         if len(a) > 0:
-                            if len(a[0]) == 8:
-                                cardid = a[0]
-                                # HARDCODED FOR A SINGLE ENTRY
-                                # TODO: Multiple entry
-                                channel = 'A'
+                            if len(a[0]) == 9:
+                                channel = a[0][0]
+                                cardid = a[0][1:]
                                 status = self._emulateCardID(cardid=cardid, channel=channel)
                                 try:
                                     self.SQLInsert(
@@ -166,7 +163,6 @@ class ITKGatePirate():
                                         emulated=True)
                                 except (Exception) as e:
                                     print(e)
-                                self._force_open()
                             else:
                                 print("Invalid data read from emulate.txt (<{data}>)".format(data=a[0]))
                             emf.close()
@@ -177,6 +173,7 @@ class ITKGatePirate():
         finally:
             logfile.close()
             self.ser.close()
+
 
     def process_raw_cardid_input(self, cardid_str):
         channel = chr(cardid_str[0])
@@ -190,7 +187,7 @@ class ITKGatePirate():
         return (cardid, channel, 0)
 
     def process_raw_data(self, raw_data):
-        card_id_len = 1+4*2 # channel id + 32byte ascii cardID + 1 char status
+        card_id_len = 1+4*2 # channel id + 32byte ascii cardID  (no status)
         if len(raw_data) == card_id_len:
             (cardid, channel, status) = self.process_raw_cardid_input(raw_data)
         elif len(raw_data) == 0:
@@ -265,7 +262,7 @@ class ITKGatePirate():
     def emulateCardID(self, cardid, channel='A'):
         t_now = self.time_now()
         with open(os.path.join(base_dir, 'emulate.txt'), 'w') as emuf:
-            emuf.write(cardid)
+            emuf.write(channel + cardid)
 
         
     def readCardID(self, max_age=None):
@@ -279,22 +276,21 @@ class ITKGatePirate():
                 
         return x
 
-    # send card id  to the server
+    # send card id  to the emulator
     # accepts string of 8 hexadecimal digits, charachter of channel
     # returns access status
-    # remark: only the channel 'A' is implemented in hardware yet. The controller will reject any other channel.
-    #  (except 'R', which will trigger a soft reset.)
     def _emulateCardID(self, cardid, channel='A'):
         self.empty_serial_buffer()
 
         if len(cardid) != 8:
             return -1
-        if channel == self.reset_command:
-            return -2
+            #raise InvalidCardID
         if self.serial_write(channel.encode()) != 1:
             return -3
-        if self.serial_write(bytes.fromhex(cardid)) != 4:
+            #raise SerialWriteCountError
+        if self.serial_write(cardid.encode()) != 8:
             return -4
+            #raise SerialWriteCountError
 
         # wait for led access status
         # status = self.read_entry_status()
@@ -307,7 +303,7 @@ class ITKGatePirate():
         if self.serial_write(self.reset_command.encode()) != 1:
             return -3
 
-        sleep(0.1)
+        sleep(0.3)
         self.empty_serial_buffer()
 
 
@@ -321,9 +317,9 @@ class ITKGatePirate():
             else:
                break
         self.ser.timeout = to
-        
-
-
+   
+# not implemented in hardware
+'''
     def _force_open(self):
         if self.serial_write(b'O') != 1:
             return -3
@@ -337,6 +333,6 @@ class ITKGatePirate():
         sleep(0.1)
         self.empty_serial_buffer()
         return 0
-
+'''
 
 
