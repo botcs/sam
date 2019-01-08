@@ -7,6 +7,8 @@
 # pathlib - helps finding the containing directory
 import os
 from time import time, sleep
+from datetime import time as clock
+from datetime import datetime as dt
 import argparse
 import pathlib
 
@@ -51,6 +53,7 @@ from utils.sqlrequest import db_query, getCard2Name, initDB
 from utils.streamer import StreamerServer
 
 # Knowing where the script is running can be really helpful for setting proper defaults
+os.environ['CUDA_VISIBLE_DEVICES']='6'
 containing_dir = str(pathlib.Path(__file__).resolve().parent)
 fileDir = os.path.dirname(os.path.realpath(__file__))
 modelDir = os.path.join(fileDir, 'weights')
@@ -73,7 +76,7 @@ parser.add_argument('--dlib-face-predictor', type=str, help='Path to dlib\'s fac
 parser.add_argument('--consecutive', type=int, default=5, 
     help='How many frames is required to be authorized as the same person')
 parser.add_argument('--k', type=int, help='List top K results', default=100)
-parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=50)
+parser.add_argument('--threshold', type=int, help='Threshold for opening count in %%', default=75)
 
 ## Display
 parser.add_argument('--display', '-d', action='store_true', help='Use OpenCV to show predictions on X')
@@ -102,11 +105,17 @@ def loadEmbeddingDB():
     global KNOWN_DB
     if args.database is not None:
         KNOWN_DB = torch.load(args.database)
-        
+        KNOWN_DB['id'] = list(KNOWN_DB['id'])
         # Torch 0.3.1 legacy stuff
         if v3:
             if isinstance(KNOWN_DB['emb'], torch.autograd.Variable): # LEGACY LINE
                 KNOWN_DB['emb'] = KNOWN_DB['emb'].data # LEGACY LINE
+
+        if torch.cuda.is_available():
+            KNOWN_DB['emb'] = KNOWN_DB['emb'].cuda()
+            print('Embedding database uploaded to GPU')
+ 
+
         print('Updated embedding database from: %10s'%args.database, '%5d samples' % len(KNOWN_DB['emb']))  
     
     
@@ -183,8 +192,6 @@ def initializeServer():
         net.cuda()
         print('Neural Network OK')
 
-        KNOWN_DB['emb'] = KNOWN_DB['emb'].cuda()
-        print('Embedding database OK')
     else:
         print('CUDA is not available')
     
@@ -216,7 +223,9 @@ def initializeServer():
     streamer = StreamerServer(
         (address, port), 
         discard_older=args.discard_older, 
-        only_consecutive=True)
+        only_consecutive=True,
+        max_retries=60
+    )
     
     
 def send(sendData):
@@ -245,32 +254,35 @@ def send(sendData):
 
 
 def recv():
+    global IS_SERVER_RUNNING
     def recv_msg():
-        try:
+        message = streamer.recv()
+        while message is None and streamer.running and IS_SERVER_RUNNING:        
             message = streamer.recv()
-            while message is None:        
-                message = streamer.recv()
-                sleep(.0001)
-            client_data = pickle.loads(message)
-            message_ts = client_data['message_ts']
-            AUTHORIZED_ID = client_data['AUTHORIZED_ID']
-            
-            jpg_as_text = client_data['bgrImg']
-            #img = base64.b64decode(jpg_as_text)
-            img = jpg_as_text
-            img = np.fromstring(img, dtype=np.uint8)
-            bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
+            sleep(.0001)
+
+        if message is None and (not streamer.running or not IS_SERVER_RUNNING):
+            return None
+
+        client_data = pickle.loads(message)
+        message_ts = client_data['message_ts']
+        AUTHORIZED_ID = client_data['AUTHORIZED_ID']
+        
+        jpg_as_text = client_data['bgrImg']
+        #img = base64.b64decode(jpg_as_text)
+        img = jpg_as_text
+        img = np.fromstring(img, dtype=np.uint8)
+        bgrImg = cv2.imdecode(img, cv2.IMREAD_COLOR)
 
             
-        except RuntimeError as e:
-            print('SERVER <recv> ERROR: ', e)
-        finally:
-            pass
         delay_time = int((time() - message_ts)*1000)
         return bgrImg, AUTHORIZED_ID, delay_time
 
     while IS_SERVER_RUNNING and streamer.running:
-        bgrImg, AUTHORIZED_ID, delay_time = recv_msg()
+        message = recv_msg()
+        if message is None:
+            return None
+        bgrImg, AUTHORIZED_ID, delay_time = message
         
         keepImg = delay_time < args.discard_older or AUTHORIZED_ID is not None
         utilization = effective_fps.ema_fps / compute_fps.ema_fps
@@ -347,7 +359,11 @@ if __name__ == '__main__':
         
             # STEP 1: READ IMAGE
             # STEP 2: READ CARD                
-            bgrImg, AUTHORIZED_ID, delay_time = recv()
+            message = recv()
+            if message is None:
+                IS_SERVER_RUNNING = False
+                break
+            bgrImg, AUTHORIZED_ID, delay_time = message
             '''
             if it % args.process_every != 0:
                 continue
@@ -389,7 +405,9 @@ if __name__ == '__main__':
             threading.Thread(target=send, args=[sendData]).start()
             
             if DLIB_MAIN_BBOX is None:
-                if it % 1000 == 0:
+                now = dt.now()
+                now_clock = now.time()
+                if clock(0, 20, 0) <= now_clock and now_clock <= clock(0, 20, 20):
                     loadEmbeddingDB()
                 
                 if args.sql:
